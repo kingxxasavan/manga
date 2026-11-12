@@ -42,7 +42,7 @@ export function SeriesActions({ slug }: { slug: string }) {
   );
 }
 
-export function ChapterList({ slug, chapters }: { slug: string; chapters: Chapter[] }) {
+export function ChapterList({ slug, chapters, sample = false }: { slug: string; chapters: Chapter[]; sample?: boolean }) {
   const [read] = useStored(KEYS.read, NO_READ);
   const [progress] = useStored(KEYS.progress, NO_PROGRESS);
   const [newestFirst, setNewestFirst] = useState(true);
@@ -54,7 +54,7 @@ export function ChapterList({ slug, chapters }: { slug: string; chapters: Chapte
     <section className="mt-12">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-2xl font-extrabold">
-          Chapters <span className="text-base font-semibold text-muted">{chapters.length}</span>
+          {sample ? "Sample chapters" : "Chapters"} <span className="text-base font-semibold text-muted">{chapters.length}</span>
         </h2>
         <button
           type="button" onClick={() => setNewestFirst((v) => !v)}
@@ -77,9 +77,9 @@ export function ChapterList({ slug, chapters }: { slug: string; chapters: Chapte
                 <span className={`min-w-0 flex-1 ${isRead && !isCurrent ? "text-muted" : ""}`}>
                   <span className="block truncate font-semibold transition group-hover:text-accent">
                     Chapter {chapter.number}
-                    <span className="font-normal text-muted"> · {chapter.title}</span>
+                    {chapter.title && <span className="font-normal text-muted"> · {chapter.title}</span>}
                   </span>
-                  <span className="block text-xs text-muted">{formatDate(chapter.publishedAt)} · {chapter.pageCount} pages</span>
+                  <span className="block text-xs text-muted">{chapter.publishedAt ? `${formatDate(chapter.publishedAt)} · ` : ""}{chapter.pageCount} pages</span>
                 </span>
                 {isCurrent ? (
                   <span className="shrink-0 rounded-full bg-accent px-2.5 py-1 text-xs font-bold text-accent-ink">Reading</span>

@@ -9,7 +9,8 @@ import { GENRES, source } from "@/lib/source";
 import { SERIES_TYPES, TYPE_LABEL } from "@/lib/types";
 
 export default async function HomePage() {
-  const [all, spotlight, today, week, allTime, latest, ...byType] = await Promise.all([
+  const [meta, all, spotlight, today, week, allTime, latest, ...byType] = await Promise.all([
+    source.getMeta(),
     source.getAll(),
     source.getSpotlight(),
     source.getPopular("today"),
@@ -23,13 +24,13 @@ export default async function HomePage() {
     <>
       <Spotlight items={spotlight} />
       <ContinueRow all={all} />
-      <PopularTabs lists={{ today, week, all: allTime }} />
+      <PopularTabs lists={{ today, week, all: allTime }} unit={meta.popularityUnit} />
       <RecommendedRow all={all} />
 
       <ScrollRow title="Latest updates" href="/browse?sort=newest">
         {latest.map((s) => (
           <RowItem key={s.slug}>
-            <SeriesCard series={s} sub={`Ch. ${s.chapterCount} · ${formatDate(s.updatedAt)}`} />
+            <SeriesCard series={s} sub={s.chapterCountUnknown ? formatDate(s.updatedAt) : `Ch. ${s.chapterCount} · ${formatDate(s.updatedAt)}`} />
           </RowItem>
         ))}
       </ScrollRow>

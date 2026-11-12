@@ -1,12 +1,17 @@
 import type { Page } from "@/lib/types";
 import { buildChapters, DEMO_SERIES, findSeries, pageCountFor, pageSizeFor } from "./demo-data";
 import { filterSeries } from "./query";
-import type { Source } from "./types";
+import type { Source, SourceMeta } from "./types";
 
 const byViews = (range: "today" | "week" | "all") =>
   [...DEMO_SERIES].sort((a, b) => b.views[range] - a.views[range]);
 
+export const DEMO_META: SourceMeta = { name: "Demo", popularityUnit: "reads", placeholderPages: true };
+
 export const demoSource: Source = {
+  async getMeta() {
+    return DEMO_META;
+  },
   async getAll() {
     return DEMO_SERIES;
   },

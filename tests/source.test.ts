@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { source } from "@/lib/source";
+import { demoSource as source } from "@/lib/source/demo";
 import { renderCover, renderPage } from "@/lib/source/art";
 import { filterSeries } from "@/lib/source/query";
 

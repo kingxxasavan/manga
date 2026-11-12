@@ -19,14 +19,21 @@ export interface Series {
   views: Record<PopularRange, number>;
   year: number;
   chapterCount: number;
+  /** true when the source did not say how many chapters exist and chapterCount is a stand in */
+  chapterCountUnknown?: boolean;
   /** ISO date of the most recent chapter */
   updatedAt: string;
+  /** Where to read the licensed release, when the source knows one */
+  officialUrl?: string;
+  /** The series page on the site the data came from */
+  sourceUrl?: string;
 }
 
 export interface Chapter {
   number: number;
+  /** Empty when the source has no chapter titles */
   title: string;
-  publishedAt: string;
+  publishedAt: string | null;
   pageCount: number;
 }
 

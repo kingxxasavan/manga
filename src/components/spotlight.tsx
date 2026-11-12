@@ -53,8 +53,12 @@ export function Spotlight({ items }: { items: Series[] }) {
               <StarIcon width={16} height={16} className="text-accent-2" />
               {current.rating.toFixed(1)}
             </span>
-            <span className="text-muted">·</span>
-            <span className="text-muted">{current.chapterCount} chapters</span>
+            {!current.chapterCountUnknown && (
+              <>
+                <span className="text-muted">·</span>
+                <span className="text-muted">{current.chapterCount} chapters</span>
+              </>
+            )}
             {current.genres.map((g) => (
               <Link
                 key={g} href={`/browse?genre=${encodeURIComponent(g)}`}

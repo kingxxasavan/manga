@@ -34,13 +34,13 @@ async function SeriesView({ params }: Props) {
   const { slug } = await params;
   const series = await source.getSeries(slug);
   if (!series) notFound();
-  const [chapters, all] = await Promise.all([source.getChapters(slug), source.getAll()]);
+  const [chapters, all, meta] = await Promise.all([source.getChapters(slug), source.getAll(), source.getMeta()]);
   const similar = similarTo(all, series);
 
   const facts = [
     { label: "Rating", value: series.rating.toFixed(1), star: true },
-    { label: "Reads", value: formatCount(series.views.all) },
-    { label: "Chapters", value: String(series.chapterCount) },
+    { label: meta.popularityUnit, value: formatCount(series.views.all) },
+    { label: "Chapters", value: series.chapterCountUnknown ? "n/a" : String(series.chapterCount) },
     { label: "Updated", value: formatDate(series.updatedAt) },
   ];
 
@@ -88,11 +88,31 @@ async function SeriesView({ params }: Props) {
               ))}
             </div>
             <SeriesActions slug={series.slug} />
+            {(series.officialUrl || series.sourceUrl) && (
+              <p className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+                {series.officialUrl && (
+                  <a href={series.officialUrl} target="_blank" rel="noreferrer" className="font-semibold text-accent hover:underline">
+                    Read the official release ↗
+                  </a>
+                )}
+                {series.sourceUrl && (
+                  <a href={series.sourceUrl} target="_blank" rel="noreferrer" className="text-muted hover:text-text">
+                    View on {meta.name} ↗
+                  </a>
+                )}
+              </p>
+            )}
           </div>
         </div>
       </section>
 
-      <ChapterList slug={series.slug} chapters={chapters} />
+      {meta.credit && meta.placeholderPages && (
+        <p className="mt-8 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-muted">
+          This site does not host this series. The chapters below open generated placeholder pages that show how the reader works.
+          {series.officialUrl && " Use the official release link above to read the real thing."}
+        </p>
+      )}
+      <ChapterList slug={series.slug} chapters={chapters} sample={Boolean(series.chapterCountUnknown)} />
 
       {similar.length > 0 && (
         <ScrollRow title="You may also like">

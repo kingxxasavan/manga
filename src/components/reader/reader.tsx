@@ -262,7 +262,7 @@ function ReaderView({ series, chapter, chapters, pages }: ReaderProps) {
       <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-60">End of chapter {chapter}</p>
       <h2 className="mt-3 text-3xl font-extrabold">{nextChapter ? "Keep going?" : "You are all caught up"}</h2>
       <p className="mt-2 opacity-70">
-        {nextChapter ? `Next up: Chapter ${nextChapter.number} · ${nextChapter.title}` : `That was the latest chapter of ${series.title}.`}
+        {nextChapter ? `Next up: Chapter ${nextChapter.number}${nextChapter.title ? ` · ${nextChapter.title}` : ""}` : `That was the latest chapter of ${series.title}.`}
       </p>
       <div className="mt-7 flex flex-col gap-3">
         {nextChapter && (
@@ -291,7 +291,7 @@ function ReaderView({ series, chapter, chapters, pages }: ReaderProps) {
           </Link>
           <div className="min-w-0 flex-1 px-1">
             <Link href={seriesHref} className="block truncate text-sm font-bold hover:text-accent">{series.title}</Link>
-            <p className="truncate text-xs text-white/60">Chapter {chapter}{index >= 0 ? ` · ${chapters[index].title}` : ""}</p>
+            <p className="truncate text-xs text-white/60">Chapter {chapter}{index >= 0 && chapters[index].title ? ` · ${chapters[index].title}` : ""}</p>
           </div>
           <label className="hidden sm:block">
             <span className="sr-only">Jump to chapter</span>

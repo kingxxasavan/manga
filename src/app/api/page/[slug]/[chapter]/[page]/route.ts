@@ -1,12 +1,13 @@
 import { renderPage } from "@/lib/source/art";
-import { findSeries, pageCountFor } from "@/lib/source/demo-data";
+import { source } from "@/lib/source";
+import { pageCountFor } from "@/lib/source/demo-data";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ slug: string; chapter: string; page: string }> },
 ) {
   const { slug, chapter, page } = await params;
-  const series = findSeries(slug);
+  const series = await source.getSeries(slug);
   const chapterNumber = Number(chapter);
   const index = Number(page);
   const valid =

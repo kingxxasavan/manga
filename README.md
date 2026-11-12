@@ -2,9 +2,13 @@
 
 A manga, manhwa and manhua reading site. Next.js, TypeScript and Tailwind CSS.
 
-It runs on built in demo content: 40 invented series with generated SVG covers and
-pages. Nothing here is real or licensed material, it is placeholder content so the
-whole site works out of the box.
+By default it shows real series information and cover thumbnails from the public
+[MangaDex API](https://api.mangadex.org/docs/): titles, covers, descriptions, genres
+and scores for the most followed manga, manhwa and manhua.
+
+It does **not** host or fetch any chapters. The reader opens generated placeholder
+pages so every reading mode can be tried, and series pages link out to the official
+release when MangaDex lists one.
 
 ## Run it
 
@@ -31,17 +35,24 @@ npm run build
 Bookmarks, history and settings are stored in the browser (`localStorage`). There
 are no accounts.
 
-## Using real content
+## Content source
 
-Everything the site shows comes through the `Source` interface in
-`src/lib/source/types.ts`. To plug in a real catalogue:
+Set the `CONTENT_SOURCE` environment variable:
 
-1. Create a file in `src/lib/source/` that implements `Source`.
-2. Export it as `source` from `src/lib/source/index.ts`.
+| Value | What you get |
+|---|---|
+| `mangadex` (default) | Real catalogue and covers from MangaDex, refreshed about once an hour |
+| `demo` | 40 invented series with generated covers, no network needed |
 
-Each `Series` carries its own `cover` URL and each `Page` its own `src`, so a new
-source can point at any image host. The demo artwork routes under `src/app/api/`
-can then be deleted.
+If MangaDex cannot be reached the site serves the demo catalogue instead of breaking.
+
+When using MangaDex data, keep to their API rules: credit MangaDex (the footer does),
+and do not run ads or charge for a site built on it. Covers are loaded through
+`/api/md-cover` because MangaDex asks sites not to hotlink its image host.
+
+To use a different catalogue, implement the `Source` interface from
+`src/lib/source/types.ts` (or reuse `catalogueSource` in `mangadex.ts` with your own
+loader) and export it from `src/lib/source/index.ts`.
 
 ## Renaming the site
 

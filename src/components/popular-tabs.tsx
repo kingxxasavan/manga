@@ -13,7 +13,7 @@ const TABS: { key: PopularRange; label: string }[] = [
   { key: "all", label: "All time" },
 ];
 
-export function PopularTabs({ lists }: { lists: Record<PopularRange, Series[]> }) {
+export function PopularTabs({ lists, unit }: { lists: Record<PopularRange, Series[]>; unit: string }) {
   const [range, setRange] = useState<PopularRange>("week");
   return (
     <section className="mt-12">
@@ -47,7 +47,7 @@ export function PopularTabs({ lists }: { lists: Record<PopularRange, Series[]> }
                 <span className="mt-0.5 block truncate text-xs text-muted">{TYPE_LABEL[s.type]} · {s.genres.slice(0, 2).join(" · ")}</span>
                 <span className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-muted">
                   <EyeIcon width={14} height={14} />
-                  {formatCount(s.views[range])} reads
+                  {formatCount(s.views.all)} {unit}
                 </span>
               </span>
             </Link>
