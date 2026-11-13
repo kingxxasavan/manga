@@ -1,72 +1,83 @@
-# Inkwell
+# Craftline
 
-A manga, manhwa and manhua reading site. Next.js, TypeScript and Tailwind CSS.
+A made to order services site. A visitor picks a service, answers a few questions
+while the price builds live, pays through Stripe Checkout, and follows the order on
+a private link. The owner works the orders from `/admin`.
 
-By default it shows real series information and cover thumbnails from the public
-[MangaDex API](https://api.mangadex.org/docs/): titles, covers, descriptions, genres
-and scores for the most followed manga, manhwa and manhua.
+Next.js, TypeScript, Tailwind CSS, Postgres, Stripe.
 
-It does **not** host or fetch any chapters. The reader opens generated placeholder
-pages so every reading mode can be tried, and series pages link out to the official
-release when MangaDex lists one.
-
-## Run it
+## Run it locally
 
 ```bash
 npm install
-npm run dev      # http://localhost:3000
-npm test         # unit tests
+cp .env.example .env.local   # fill in what you have, everything is optional locally
+npm run dev                  # http://localhost:3000
+npm test
 npm run lint
 npm run build
 ```
 
-## What is in it
+With no `DATABASE_URL`, local development uses PGlite (Postgres running inside
+Node, data in `.data/`), so nothing needs installing. Production refuses to start
+orders without a real database, because that data would be lost on every restart.
 
-- **Home**: spotlight banner, continue reading, popular (today, week, all time),
-  recommendations, latest updates, genre shortcuts, a row per type
-- **Browse**: search, filter by type, status and genres, four sort orders, all kept in the URL
-- **Series page**: details, bookmark, chapter list with read markers, similar series
-- **Reader**: long strip, single page and double page modes, reading direction,
-  fit options, strip width and page gap, four backgrounds, keyboard, tap zones and
-  swipe, auto hiding bars, page slider, auto continue, remembers your exact page
-- **Library**: bookmarks and reading history
-- Dark and light themes
+## Going live
 
-Bookmarks, history and settings are stored in the browser (`localStorage`). There
-are no accounts.
+Set these environment variables on the host (see `.env.example`):
 
-## Content source
-
-Set the `CONTENT_SOURCE` environment variable:
-
-| Value | What you get |
+| Variable | Needed for |
 |---|---|
-| `mangadex` (default) | Real catalogue and covers from MangaDex, refreshed about once an hour |
-| `demo` | 40 invented series with generated covers, no network needed |
+| `DATABASE_URL` | Saving orders. Any Postgres works. The table is created on first use. |
+| `STRIPE_SECRET_KEY` | Taking payments. Start with a test key. |
+| `STRIPE_WEBHOOK_SECRET` | Marking orders paid even if the customer closes the tab. |
+| `ADMIN_PASSWORD` | Logging in at `/admin`. 12 characters or more. |
 
-If MangaDex cannot be reached the site serves the demo catalogue instead of breaking.
+Stripe webhook: in the Stripe dashboard add an endpoint for
+`https://YOUR-DOMAIN/api/stripe/webhook` with the events
+`checkout.session.completed` and `checkout.session.async_payment_succeeded`, then
+copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
 
-When using MangaDex data, keep to their API rules: credit MangaDex (the footer does),
-and do not run ads or charge for a site built on it. Covers are loaded through
-`/api/md-cover` because MangaDex asks sites not to hotlink its image host.
+## Changing services and prices
 
-To use a different catalogue, implement the `Source` interface from
-`src/lib/source/types.ts` (or reuse `catalogueSource` in `mangadex.ts` with your own
-loader) and export it from `src/lib/source/index.ts`.
+Everything sold lives in `src/lib/services.ts`: the services, their questions, and
+every price, in cents. Add or edit entries there. `npm test` checks that each
+"from" price really is the cheapest possible order.
 
-## Renaming the site
+Site name, currency and the price limits are in `src/lib/site.ts`. Orders above
+`MAX_ORDER_CENTS` ($2,000) are never charged automatically, they become quote
+requests that the owner prices by hand.
 
-Change `SITE_NAME` in `src/lib/site.ts`.
+## How money is kept safe
+
+- The price is calculated on the server from the answers, using the same function
+  that drives the live price in the browser. A price sent by the browser is never used.
+- An order becomes paid only when Stripe confirms it: through the signed webhook,
+  or by looking the Checkout Session up with the secret key when the customer returns.
+- Recording a payment is idempotent. A second payment for the same order, a payment
+  after cancellation, or an amount that differs from the listed price is flagged on
+  the admin page instead of being dropped.
+- An open payment link is reused, and old links are expired when a quote changes,
+  so a customer is not sent to pay twice.
+- Card details never touch this site. Refunds are done in the Stripe dashboard.
+
+## What is not built yet
+
+Customer accounts, messages and file uploads inside an order, email notifications,
+promo codes, referrals, reviews, and AI follow up questions. Customers reach their
+order through the private link shown after ordering, so they need to keep it.
+
+The wording on `/policies` is a draft. Read it and change it to match how you
+really work before taking real orders.
 
 ## Layout
 
 ```
-src/app/                 routes
-src/components/          UI
-src/components/reader/   the reader
-src/lib/source/          Source interface and the demo implementation
-src/lib/reader/logic.ts  pure reader logic (page stepping, spreads, input mapping)
-src/lib/recommend.ts     recommendation scoring
-src/lib/storage.ts       safe localStorage wrapper
-tests/                   unit tests
+src/lib/services.ts   what is sold, questions and prices
+src/lib/pricing.ts    answer validation and the price formula
+src/lib/orders.ts     order storage and status rules
+src/lib/payments.ts   everything that talks to Stripe
+src/lib/admin-auth.ts owner login
+src/app/actions.ts    server actions (order, pay, admin)
+src/app/              pages and the Stripe routes
+tests/                unit tests
 ```
