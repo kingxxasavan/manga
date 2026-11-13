@@ -7,6 +7,9 @@ const website = getService("website")!;
 const DETAILS = "A site for my bakery with a menu.";
 const base = { type: "landing", pages: 1, features: [], level: "basic", details: DETAILS, links: "", revisions: 1, speed: "standard" };
 
+const scripts = getService("scripts")!;
+const scriptBase = { type: "script", complexity: "simple", level: "basic", extras: [], details: "Rename all my files by date.", revisions: 1, speed: "standard" };
+
 const priced = (service: Service, input: Record<string, unknown>) => {
   const r = quote(service, input);
   if (!r.ok) throw new Error(JSON.stringify(r.errors));
@@ -15,34 +18,36 @@ const priced = (service: Service, input: Record<string, unknown>) => {
 
 describe("quote", () => {
   it("bases the cheapest website on its starting amount", () => {
-    expect(priced(website, base).total).toBe(149_00);
+    expect(priced(website, base).total).toBe(45_00);
   });
   it("adds options, extra units and extra revisions", () => {
-    // 299 + 2 extra pages (70) + form (20) + blog (60) + 1 extra revision (12) = 461
-    expect(priced(website, { ...base, type: "multi", pages: 5, features: ["blog", "form"], revisions: 2 }).total).toBe(461_00);
+    // 90 + 2 extra pages (12) + form (5) + blog (15) + 1 extra revision (5) = 127
+    expect(priced(website, { ...base, type: "multi", pages: 5, features: ["blog", "form"], revisions: 2 }).total).toBe(127_00);
   });
   it("scales with the level of finish and with rush, rounding to a whole dollar", () => {
-    expect(priced(website, { ...base, level: "polished" }).total).toBe(201_00); // 149 x 1.35 = 201.15
-    expect(priced(website, { ...base, level: "premium", speed: "rush" }).total).toBe(349_00); // 149 x 1.8 x 1.3 = 348.66
+    expect(priced(website, { ...base, level: "polished" }).total).toBe(54_00); // 45 x 1.2
+    expect(priced(website, { ...base, level: "premium", speed: "rush" }).total).toBe(72_00); // 45 x 1.4 x 1.15 = 72.45
+    expect(priced(website, { ...base, type: "multi", pages: 5, features: ["blog", "form"], level: "polished", revisions: 2, speed: "rush" }).total).toBe(175_00); // 127 x 1.2 x 1.15 = 175.26
   });
   it("scales with complexity where a service asks for it", () => {
-    const scripts = getService("scripts")!;
-    const input = { type: "script", complexity: "simple", level: "basic", extras: [], details: "Rename all my files by date.", revisions: 1, speed: "standard" };
-    expect(priced(scripts, input).total).toBe(49_00);
-    expect(priced(scripts, { ...input, complexity: "complex" }).total).toBe(108_00); // 49 x 2.2 = 107.8
+    expect(priced(scripts, scriptBase).total).toBe(25_00);
+    expect(priced(scripts, { ...scriptBase, complexity: "complex" }).total).toBe(50_00);
+    expect(priced(scripts, { ...scriptBase, complexity: "huge" }).total).toBe(100_00);
   });
   it("gives the same result whatever order multi picks arrive in, and ignores duplicates", () => {
     expect(quote(website, { ...base, features: ["blog", "form"] })).toEqual(quote(website, { ...base, features: ["form", "blog", "blog"] }));
   });
   it("returns an estimate range around the calculated amount", () => {
-    const q = priced(website, { ...base, type: "multi" }); // 299
-    expect(q.estimate).toEqual({ low: 250_00, high: 345_00 });
+    const q = priced(website, { ...base, type: "multi" }); // 90
+    expect(q.estimate).toEqual({ low: 75_00, high: 105_00 });
     expect(q.reason).toBeUndefined();
   });
   it("gives no estimate above the cap, so those are priced by hand", () => {
-    const q = priced(website, {
-      ...base, type: "store", pages: 20, features: ["form", "blog", "booking", "payments", "copy"], level: "premium", revisions: 6, speed: "rush",
-    });
+    const giant: Service = {
+      id: "giant", name: "Giant", tagline: "", icon: "code", delivery: "", examples: [],
+      questions: [{ id: "size", kind: "choice", label: "Size", options: [{ id: "big", label: "Big", price: MAX_ORDER_CENTS + 100 }] }],
+    };
+    const q = priced(giant, { size: "big" });
     expect(q.total).toBeGreaterThan(MAX_ORDER_CENTS);
     expect(q).toMatchObject({ estimate: null, reason: "over_cap" });
   });
@@ -101,18 +106,44 @@ describe("service config", () => {
       expect(ids.includes("complexity") || ids.includes("pages"), s.id).toBe(true);
     }
   });
+  // Builds a request by picking one option per choice question and a count per number question.
+  const request = (s: Service, pick: (ids: string[], questionId: string) => string, count: (q: { min: number; max: number; included: number }) => number, multi: (ids: string[]) => string[]) => {
+    const input: Record<string, unknown> = {};
+    for (const q of s.questions) {
+      if (q.kind === "choice") input[q.id] = pick(q.options.map((o) => o.id), q.id);
+      else if (q.kind === "multi") input[q.id] = multi(q.options.map((o) => o.id));
+      else if (q.kind === "number") input[q.id] = count(q);
+      else input[q.id] = q.required ? "Enough detail to pass." : "";
+    }
+    return input;
+  };
+  const estimated = SERVICES.filter((x) => !x.quoteOnly);
+
   it("can produce an estimate for the cheapest possible request of each service", () => {
-    for (const s of SERVICES.filter((x) => !x.quoteOnly)) {
-      const cheapest: Record<string, unknown> = {};
-      for (const q of s.questions) {
-        if (q.kind === "choice") cheapest[q.id] = q.options[0].id;
-        else if (q.kind === "multi") cheapest[q.id] = [];
-        else if (q.kind === "number") cheapest[q.id] = q.min;
-        else cheapest[q.id] = q.required ? "Enough detail to pass." : "";
-      }
-      const q = priced(s, cheapest);
+    for (const s of estimated) {
+      const q = priced(s, request(s, (ids) => ids[0], (n) => n.min, () => []));
       expect(q.estimate, s.id).not.toBeNull();
       expect(q.estimate!.low, s.id).toBeGreaterThanOrEqual(MIN_ORDER_CENTS);
+    }
+  });
+  it("only offers the very complex tier for software", () => {
+    for (const s of SERVICES) {
+      const complexity = s.questions.find((q) => q.id === "complexity");
+      const hasHuge = complexity?.kind === "choice" && complexity.options.some((o) => o.id === "huge");
+      expect(hasHuge, s.id).toBe(s.id === "scripts");
+    }
+  });
+  it("lets a very complex full app or game go well above 500 dollars", () => {
+    const q = priced(scripts, { ...scriptBase, type: "app", complexity: "huge", level: "premium" }); // 150 x 4 x 1.4 = 840
+    expect(q.total).toBe(840_00);
+    expect(q.estimate!.low).toBeGreaterThan(500_00);
+    expect(q.estimate!.high).toBeLessThanOrEqual(MAX_ORDER_CENTS);
+  });
+  it("never needs a hand made price for anything the questions can produce", () => {
+    // Even with everything maxed out, each service stays under the cap and gets an estimate.
+    for (const s of estimated) {
+      const q = priced(s, request(s, (ids, id) => (id === "type" && s.id === "scripts" ? "app" : ids[ids.length - 1]), (n) => n.max, (ids) => ids));
+      expect(q.estimate, `${s.id} maxed out`).not.toBeNull();
     }
   });
 });

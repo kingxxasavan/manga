@@ -5,6 +5,11 @@
  * ESTIMATE shown after the questions: `quote()` in pricing.ts adds them up and
  * turns the result into a range. The owner then confirms the final price by hand.
  * All amounts are in cents. To add a service, add an entry to SERVICES.
+ *
+ * The amounts are tuned to one rule: every normal request estimates at or under
+ * 500 dollars. Only a full app or game, a "very complex" software job, or an
+ * unusually large quantity can go above. `npm test` enforces that rule, and
+ * `SHOW_SPREAD=1 npm test` prints the spread while you tune numbers here.
  */
 
 export interface Option {
@@ -56,7 +61,7 @@ const RUSH: Question = {
   label: "How fast do you need it?",
   options: [
     { id: "standard", label: "Standard", hint: "Normal delivery time" },
-    { id: "rush", label: "Rush", hint: "About twice as fast", multiplier: 1.3 },
+    { id: "rush", label: "Rush", hint: "About twice as fast", multiplier: 1.15 },
   ],
 };
 
@@ -68,8 +73,17 @@ const COMPLEXITY: Question = {
   help: "Your best guess is fine. We check it before confirming your price.",
   options: [
     { id: "simple", label: "Simple", hint: "One clear, small job" },
-    { id: "medium", label: "Medium", hint: "A few connected parts", multiplier: 1.5 },
-    { id: "complex", label: "Complex", hint: "Many parts, or tricky details", multiplier: 2.2 },
+    { id: "medium", label: "Medium", hint: "A few connected parts", multiplier: 1.4 },
+    { id: "complex", label: "Complex", hint: "Many parts, or tricky details", multiplier: 2 },
+  ],
+};
+
+/** Software can get far bigger than a logo or a resume, so it has one more tier. */
+const COMPLEXITY_SOFTWARE: Question = {
+  ...COMPLEXITY,
+  options: [
+    ...(COMPLEXITY as Extract<Question, { kind: "choice" }>).options,
+    { id: "huge", label: "Very complex", hint: "A full app, game or system", multiplier: 4 },
   ],
 };
 
@@ -80,8 +94,8 @@ const LEVEL: Question = {
   label: "What level of finish do you want?",
   options: [
     { id: "basic", label: "Basic", hint: "Clean and working, no extras" },
-    { id: "polished", label: "Polished", hint: "Extra care on the details", multiplier: 1.35 },
-    { id: "premium", label: "Premium", hint: "Our best work, top to bottom", multiplier: 1.8 },
+    { id: "polished", label: "Polished", hint: "Extra care on the details", multiplier: 1.2 },
+    { id: "premium", label: "Premium", hint: "Our best work, top to bottom", multiplier: 1.4 },
   ],
 };
 
@@ -93,7 +107,7 @@ const REVISIONS: Question = {
   min: 1,
   max: 6,
   included: 1,
-  unitPrice: 12_00,
+  unitPrice: 5_00,
   unit: "round",
 };
 
@@ -132,9 +146,9 @@ export const SERVICES: Service[] = [
         kind: "choice",
         label: "What kind of website?",
         options: [
-          { id: "landing", label: "One page", hint: "A single landing page", price: 149_00 },
-          { id: "multi", label: "Multi page", hint: "Home plus inner pages", price: 299_00 },
-          { id: "store", label: "Online store", hint: "Products, cart and checkout", price: 649_00 },
+          { id: "landing", label: "One page", hint: "A single landing page", price: 45_00 },
+          { id: "multi", label: "Multi page", hint: "Home plus inner pages", price: 90_00 },
+          { id: "store", label: "Online store", hint: "Products, cart and checkout", price: 140_00 },
         ],
       },
       {
@@ -145,7 +159,7 @@ export const SERVICES: Service[] = [
         min: 1,
         max: 20,
         included: 3,
-        unitPrice: 35_00,
+        unitPrice: 6_00,
         unit: "page",
       },
       {
@@ -154,11 +168,11 @@ export const SERVICES: Service[] = [
         label: "Anything extra it should do?",
         help: "Pick as many as you need, or none.",
         options: [
-          { id: "form", label: "Contact form", price: 20_00 },
-          { id: "blog", label: "Blog", price: 60_00 },
-          { id: "booking", label: "Booking or appointments", price: 90_00 },
-          { id: "payments", label: "Take payments", price: 120_00 },
-          { id: "copy", label: "Write the text for me", price: 60_00 },
+          { id: "form", label: "Contact form", price: 5_00 },
+          { id: "blog", label: "Blog", price: 15_00 },
+          { id: "booking", label: "Booking or appointments", price: 25_00 },
+          { id: "payments", label: "Take payments", price: 30_00 },
+          { id: "copy", label: "Write the text for me", price: 15_00 },
         ],
       },
       LEVEL,
@@ -181,11 +195,11 @@ export const SERVICES: Service[] = [
         kind: "choice",
         label: "What do you need written?",
         options: [
-          { id: "cover", label: "Cover letter", price: 19_00 },
-          { id: "resume", label: "Resume", price: 29_00 },
-          { id: "both", label: "Resume and cover letter", price: 42_00 },
-          { id: "product", label: "Product descriptions", price: 25_00 },
-          { id: "other", label: "Something else", hint: "Up to 500 words", price: 25_00 },
+          { id: "cover", label: "Cover letter", price: 10_00 },
+          { id: "resume", label: "Resume", price: 15_00 },
+          { id: "both", label: "Resume and cover letter", price: 22_00 },
+          { id: "product", label: "Product descriptions", price: 12_00 },
+          { id: "other", label: "Something else", hint: "Up to 500 words", price: 12_00 },
         ],
       },
       {
@@ -196,7 +210,7 @@ export const SERVICES: Service[] = [
         min: 5,
         max: 100,
         included: 5,
-        unitPrice: 4_00,
+        unitPrice: 2_00,
         unit: "item",
       },
       COMPLEXITY,
@@ -229,10 +243,10 @@ export const SERVICES: Service[] = [
         kind: "choice",
         label: "What should we design?",
         options: [
-          { id: "thumbnail", label: "Thumbnail", price: 12_00 },
-          { id: "banner", label: "Channel banner", price: 25_00 },
-          { id: "logo", label: "Logo", price: 39_00 },
-          { id: "kit", label: "Logo and brand kit", hint: "Logo, colors and fonts", price: 79_00 },
+          { id: "thumbnail", label: "Thumbnail", price: 8_00 },
+          { id: "banner", label: "Channel banner", price: 15_00 },
+          { id: "logo", label: "Logo", price: 25_00 },
+          { id: "kit", label: "Logo and brand kit", hint: "Logo, colors and fonts", price: 45_00 },
         ],
       },
       {
@@ -242,7 +256,7 @@ export const SERVICES: Service[] = [
         min: 1,
         max: 30,
         included: 1,
-        unitPrice: 9_00,
+        unitPrice: 6_00,
         unit: "extra",
       },
       COMPLEXITY,
@@ -255,32 +269,33 @@ export const SERVICES: Service[] = [
   },
   {
     id: "scripts",
-    name: "Scripts and automations",
-    tagline: "Small tools that save you time",
+    name: "Apps, scripts and tools",
+    tagline: "From a small script to a full app or game",
     icon: "code",
     delivery: "2 to 5 days",
-    examples: ["Discord bot", "Python script", "Spreadsheet automation", "Web scraper for your own data"],
+    examples: ["Discord bot", "Python script", "Spreadsheet automation", "Simple app or game"],
     questions: [
       {
         id: "type",
         kind: "choice",
         label: "What kind of tool?",
         options: [
-          { id: "script", label: "Small script", hint: "Does one job", price: 49_00 },
-          { id: "sheet", label: "Spreadsheet automation", price: 59_00 },
-          { id: "bot", label: "Chat bot", hint: "Discord, Telegram and similar", price: 99_00 },
-          { id: "automation", label: "Automation between apps", price: 129_00 },
+          { id: "script", label: "Small script", hint: "Does one job", price: 25_00 },
+          { id: "sheet", label: "Spreadsheet automation", price: 30_00 },
+          { id: "bot", label: "Chat bot", hint: "Discord, Telegram and similar", price: 50_00 },
+          { id: "automation", label: "Automation between apps", price: 65_00 },
+          { id: "app", label: "App or game", hint: "A full program people use or play", price: 150_00 },
         ],
       },
-      COMPLEXITY,
+      COMPLEXITY_SOFTWARE,
       LEVEL,
       {
         id: "extras",
         kind: "multi",
         label: "Any extras?",
         options: [
-          { id: "setup", label: "Set it up and run it for me", price: 40_00 },
-          { id: "docs", label: "Written guide on how to use it", price: 20_00 },
+          { id: "setup", label: "Set it up and run it for me", price: 20_00 },
+          { id: "docs", label: "Written guide on how to use it", price: 10_00 },
         ],
       },
       details("What should it do?", "Describe the steps. What goes in, what should come out, and where it should run."),

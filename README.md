@@ -59,6 +59,12 @@ the range built from them. Shared `COMPLEXITY` and `LEVEL` questions multiply th
 basis. The range is 15 percent either side of the calculated amount, rounded to
 5 dollars (`estimateRange` in `src/lib/pricing.ts`).
 
+The amounts follow one rule: every normal request estimates at or under $500.
+Only a full app or game, a "very complex" software job, or a bulk quantity (like
+20 pages or 30 logos) can go above. `npm test` fails if a change breaks that rule,
+and `SHOW_SPREAD=1 npx vitest run tests/estimate-spread.test.ts --disable-console-intercept`
+prints the cheapest, middle and dearest estimate per service while you tune.
+
 Site name, currency and the price limits are in `src/lib/site.ts`. A request whose
 basis is above `MAX_ORDER_CENTS` ($2,000) gets no automatic estimate, and no final
 price can be set outside $5 to $2,000.
