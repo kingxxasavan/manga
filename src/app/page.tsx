@@ -1,118 +1,173 @@
 import Link from "next/link";
-import { ArrowRight, Clock, Lock, ServiceIcon } from "@/components/icons";
+import { HeroQuote } from "@/components/hero-quote";
+import { ArrowRight, Check, Clock, Lock, ServiceIcon } from "@/components/icons";
+import { ProcessDemo } from "@/components/process-demo";
+import { Reveal } from "@/components/reveal";
 import { formatMoney } from "@/lib/money";
 import { SERVICES } from "@/lib/services";
-import { MAX_ORDER_CENTS, SITE_NAME } from "@/lib/site";
+import { MAX_ORDER_CENTS } from "@/lib/site";
 
-const STEPS = [
-  { title: "Pick what you need", body: "Choose a service below. Every one shows its starting price up front." },
-  { title: "Answer a few questions", body: "Quick taps, no calls. The price updates live with every answer, so there are no surprises." },
-  { title: "Pay securely", body: "Checkout runs on Stripe. We never see or store your card details." },
-  { title: "Track it to done", body: "You get a private link that shows exactly where your order is, from received to delivered." },
+const PROMISES = [
+  { title: "The price is the price", body: "It comes from a fixed list, not a guess. What you see before checkout is exactly what you are charged." },
+  { title: "Changes are included", body: "Every order comes with a round of changes, and you can add more rounds when you order." },
+  { title: "You always know where it is", body: "Your private order page shows each step from received to done, with our notes along the way." },
+  { title: "Nothing to sign up for", body: "No account, no calls, no back and forth emails just to find out what something costs." },
 ];
 
 const FAQ = [
-  { q: "How is the price decided?", a: "From a fixed price list. Each answer you give adds a known amount, and you see the total change as you go. The price you see before paying is the price you pay." },
-  { q: "What if my project is bigger than the options?", a: `Use "Something else" and describe it. We reply with a price on your order page before you pay anything. Orders above ${formatMoney(MAX_ORDER_CENTS)} are always quoted by hand.` },
-  { q: "Do I need an account?", a: "No. After you order you get a private link to your order page. Keep that link, it is how you check progress and get your files." },
-  { q: "What if I am not happy with it?", a: "Every order includes at least one round of changes, and you can add more when you order. See the refunds page for the details." },
+  { q: "How is the price decided?", a: "From a fixed price list. Each answer you give adds a known amount, and you watch the total change as you go. The price you see before paying is the price you pay." },
+  { q: "What if my project is bigger than the options?", a: `Choose "Something else" and describe it. We reply with a price on your order page before you pay anything. Orders above ${formatMoney(MAX_ORDER_CENTS)} are always quoted by hand.` },
+  { q: "Do I need an account?", a: "No. After you order you get a private link to your order page. Keep that link, it is how you check progress and collect your files." },
+  { q: "How do I pay?", a: "On a Stripe checkout page, by card. This site never sees or stores your card details." },
+  { q: "What if I am not happy with it?", a: "Every order includes at least one round of changes, and you can add more when you order. The refunds page has the full details." },
 ];
+
+const eyebrow = "text-xs font-bold uppercase tracking-[0.18em] text-accent";
 
 export default function HomePage() {
   return (
     <>
-      <section className="rise pb-6 pt-14 text-center sm:pt-20">
-        <p className="mx-auto inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-muted">
-          <span className="size-2 rounded-full bg-accent" /> One studio, one clear price
-        </p>
-        <h1 className="mx-auto mt-6 max-w-3xl text-5xl font-extrabold leading-[1.02] sm:text-6xl lg:text-7xl">
-          Tell us what you need. <span className="text-accent">See the price</span> before you pay.
-        </h1>
-        <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-muted">
-          Websites, writing, graphics and small tools, made for you. Answer a few questions, watch the price build, and track your order to the finish.
-        </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link href="#services" className="inline-flex items-center gap-2 rounded-full bg-accent px-7 py-3.5 font-bold text-accent-ink transition hover:brightness-110 active:scale-[0.97]">
-            Start building <ArrowRight width={18} height={18} />
-          </Link>
-          <Link href="#how" className="rounded-full border border-line bg-surface px-7 py-3.5 font-bold transition hover:border-text active:scale-[0.97]">
-            How it works
-          </Link>
+      {/* Hero */}
+      <section className="panel-dark on-dark mt-4 rounded-[2rem] px-6 py-14 sm:mt-6 sm:rounded-[2.5rem] sm:px-10 sm:py-20 lg:px-14">
+        <span className="glow glow-a" /><span className="glow glow-b" />
+        <div className="grid items-center gap-14 lg:grid-cols-[1.15fr_1fr]">
+          <div>
+            <p className="rise inline-flex items-center gap-2.5 rounded-full border border-line bg-surface px-4 py-1.5 text-xs font-semibold text-muted">
+              <span className="live-dot" /> Taking new orders
+            </p>
+            <h1 className="rise mt-6 text-[2.75rem] font-extrabold leading-[1.02] sm:text-6xl lg:text-[4.25rem]" style={{ animationDelay: "60ms" }}>
+              Describe it.<br />See the price.<br /><span className="text-gradient">We build it.</span>
+            </h1>
+            <p className="rise mt-6 max-w-lg text-lg leading-relaxed text-muted" style={{ animationDelay: "120ms" }}>
+              Websites, writing, graphics and small tools, made to order. Answer a few questions, watch your price build live, and follow your order to the finish.
+            </p>
+            <div className="rise mt-8 flex flex-wrap gap-3" style={{ animationDelay: "180ms" }}>
+              <Link href="#services" className="btn btn-light px-7 py-3.5">
+                Start building <ArrowRight width={18} height={18} className="arrow" />
+              </Link>
+              <Link href="#process" className="btn border border-line bg-surface px-7 py-3.5 hover:bg-surface-2">
+                See how it works
+              </Link>
+            </div>
+            <ul className="rise mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted" style={{ animationDelay: "240ms" }}>
+              <li className="inline-flex items-center gap-2"><Lock width={15} height={15} /> Secure checkout by Stripe</li>
+              <li className="inline-flex items-center gap-2"><Clock width={15} height={15} /> A price in about a minute</li>
+              <li className="inline-flex items-center gap-2"><Check width={15} height={15} /> No account needed</li>
+            </ul>
+          </div>
+          <div className="rise pb-2 sm:pb-24 lg:pb-16" style={{ animationDelay: "200ms" }}>
+            <HeroQuote />
+          </div>
         </div>
-        <p className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
-          <span className="inline-flex items-center gap-1.5"><Lock width={15} height={15} /> Secure checkout by Stripe</span>
-          <span className="inline-flex items-center gap-1.5"><Clock width={15} height={15} /> No account needed</span>
-        </p>
       </section>
 
-      <section id="services" className="scroll-mt-24 pt-12">
-        <h2 className="text-3xl font-extrabold sm:text-4xl">What can we build for you?</h2>
-        <p className="mt-2 text-muted">Pick one to start. It takes about a minute.</p>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {SERVICES.map((service) => (
-            <Link
-              key={service.id} href={`/build/${service.id}`}
-              className={`group flex flex-col rounded-3xl border border-line bg-surface p-6 shadow-card transition hover:-translate-y-1 hover:border-accent/60 ${service.quoteOnly ? "sm:col-span-2 lg:col-span-2" : ""}`}
-            >
-              <span className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent">
-                <ServiceIcon name={service.icon} width={24} height={24} />
-              </span>
-              <h3 className="mt-4 text-2xl font-extrabold">{service.name}</h3>
-              <p className="mt-1 text-muted">{service.tagline}</p>
-              <ul className="mt-4 flex flex-wrap gap-2">
-                {service.examples.map((example) => (
-                  <li key={example} className="rounded-full bg-surface-2 px-3 py-1 text-xs font-semibold text-muted">{example}</li>
-                ))}
-              </ul>
-              <div className="mt-6 flex items-end justify-between gap-3 border-t border-line pt-4">
-                <p>
-                  <span className="block text-xs font-bold uppercase tracking-wider text-muted">{service.quoteOnly ? "Price" : "From"}</span>
-                  <span className="font-display text-2xl font-extrabold">{service.quoteOnly ? "Custom quote" : formatMoney(service.startingAt)}</span>
-                </p>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-bold text-accent-ink transition group-hover:brightness-110">
-                  Build <ArrowRight width={16} height={16} />
+      {/* Services */}
+      <section id="services" className="scroll-mt-24 pt-24">
+        <Reveal>
+          <p className={eyebrow}>Services</p>
+          <h2 className="mt-3 text-4xl font-extrabold sm:text-5xl">What can we build for you?</h2>
+          <p className="mt-3 max-w-xl text-lg text-muted">Pick one to start. You will have a price in about a minute, and you only pay once you have seen it.</p>
+        </Reveal>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {SERVICES.map((service, i) => (
+            <Reveal key={service.id} delay={i * 60} className={service.quoteOnly ? "sm:col-span-2" : ""}>
+              <Link
+                href={`/build/${service.id}`}
+                className={`lift group flex h-full flex-col rounded-3xl border border-line p-6 shadow-card ${service.quoteOnly ? "panel-dark on-dark" : "bg-surface"}`}
+              >
+                <span className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent">
+                  <ServiceIcon name={service.icon} width={24} height={24} />
                 </span>
+                <h3 className="mt-5 text-2xl font-extrabold">{service.name}</h3>
+                <p className="mt-1.5 text-muted">{service.tagline}</p>
+                <ul className="mt-5 flex flex-wrap gap-2">
+                  {service.examples.map((example) => (
+                    <li key={example} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted">{example}</li>
+                  ))}
+                </ul>
+                <div className="mt-auto flex items-end justify-between gap-3 pt-7">
+                  <p>
+                    <span className="block text-[11px] font-bold uppercase tracking-[0.16em] text-muted">{service.quoteOnly ? "Price" : "From"}</span>
+                    <span className="font-display text-3xl font-extrabold">{service.quoteOnly ? "Custom quote" : formatMoney(service.startingAt)}</span>
+                  </p>
+                  <span className="inline-flex items-center gap-1.5 text-sm font-bold text-accent">
+                    Build <ArrowRight width={16} height={16} className="arrow" />
+                  </span>
+                </div>
+              </Link>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* Process */}
+      <section id="process" className="scroll-mt-24 pt-28">
+        <Reveal>
+          <p className={eyebrow}>How it works</p>
+          <h2 className="mt-3 text-4xl font-extrabold sm:text-5xl">From idea to delivered, in four steps</h2>
+          <p className="mt-3 max-w-xl text-lg text-muted">Watch it play, or click a step to jump to it.</p>
+        </Reveal>
+        <Reveal className="mt-10" delay={80}>
+          <ProcessDemo />
+        </Reveal>
+      </section>
+
+      {/* Promises */}
+      <section className="pt-28">
+        <Reveal>
+          <p className={eyebrow}>Why order here</p>
+          <h2 className="mt-3 text-4xl font-extrabold sm:text-5xl">Simple on purpose</h2>
+        </Reveal>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2">
+          {PROMISES.map((item, i) => (
+            <Reveal key={item.title} delay={i * 60}>
+              <div className="flex h-full gap-4 rounded-3xl border border-line bg-surface p-6 shadow-card">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-good/15 text-good"><Check width={18} height={18} strokeWidth={3} /></span>
+                <div>
+                  <h3 className="text-xl font-bold">{item.title}</h3>
+                  <p className="mt-1.5 leading-relaxed text-muted">{item.body}</p>
+                </div>
               </div>
-            </Link>
+            </Reveal>
           ))}
         </div>
       </section>
 
-      <section id="how" className="scroll-mt-24 pt-20">
-        <h2 className="text-3xl font-extrabold sm:text-4xl">How it works</h2>
-        <ol className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {STEPS.map((step, i) => (
-            <li key={step.title} className="rounded-3xl border border-line bg-surface p-6">
-              <span className="font-display text-4xl font-extrabold text-accent">{i + 1}</span>
-              <h3 className="mt-3 text-lg font-bold">{step.title}</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted">{step.body}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="pt-20">
-        <h2 className="text-3xl font-extrabold sm:text-4xl">Questions</h2>
-        <div className="mt-6 divide-y divide-line rounded-3xl border border-line bg-surface">
-          {FAQ.map((item) => (
-            <details key={item.q} className="group p-5 sm:p-6">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-bold">
-                {item.q}
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-xl leading-none transition group-open:rotate-45">+</span>
-              </summary>
-              <p className="mt-3 max-w-3xl leading-relaxed text-muted">{item.a}</p>
-            </details>
-          ))}
+      {/* FAQ */}
+      <section id="faq" className="scroll-mt-24 pt-28">
+        <div className="grid gap-10 lg:grid-cols-[1fr_1.6fr]">
+          <Reveal>
+            <p className={eyebrow}>Questions</p>
+            <h2 className="mt-3 text-4xl font-extrabold sm:text-5xl">Good to know</h2>
+            <p className="mt-3 text-lg text-muted">The short answers. The <Link href="/policies" className="font-semibold text-accent hover:underline">refunds and terms</Link> page has the rest.</p>
+          </Reveal>
+          <Reveal delay={80}>
+            <div className="divide-y divide-line rounded-3xl border border-line bg-surface shadow-card">
+              {FAQ.map((item) => (
+                <details key={item.q} className="group p-5 sm:p-6">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-lg font-bold">
+                    {item.q}
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-xl leading-none transition-transform duration-200 ease-out-strong group-open:rotate-45">+</span>
+                  </summary>
+                  <p className="rise mt-3 max-w-2xl leading-relaxed text-muted">{item.a}</p>
+                </details>
+              ))}
+            </div>
+          </Reveal>
         </div>
       </section>
 
-      <section className="mt-20 rounded-[2rem] bg-accent p-8 text-center text-accent-ink sm:p-12">
-        <h2 className="text-3xl font-extrabold sm:text-4xl">Ready when you are</h2>
-        <p className="mx-auto mt-2 max-w-md opacity-90">Start with {SITE_NAME} in a minute. You only pay once you have seen the price.</p>
-        <Link href="#services" className="mt-6 inline-flex items-center gap-2 rounded-full bg-accent-ink px-7 py-3.5 font-bold text-accent transition hover:opacity-90 active:scale-[0.97]">
-          Pick a service <ArrowRight width={18} height={18} />
-        </Link>
-      </section>
+      {/* Closing banner */}
+      <Reveal className="mt-28">
+        <section className="panel-dark on-dark rounded-[2rem] px-6 py-16 text-center sm:rounded-[2.5rem] sm:px-10">
+          <span className="glow glow-a" /><span className="glow glow-b" />
+          <h2 className="mx-auto max-w-2xl text-4xl font-extrabold sm:text-5xl">Have something in mind?</h2>
+          <p className="mx-auto mt-3 max-w-md text-lg text-muted">Get your price in about a minute. You only pay once you have seen it.</p>
+          <Link href="#services" className="btn btn-light mt-8 px-8 py-4">
+            Pick a service <ArrowRight width={18} height={18} className="arrow" />
+          </Link>
+        </section>
+      </Reveal>
     </>
   );
 }

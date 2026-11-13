@@ -13,8 +13,8 @@ export default function AdminLoginPage() {
           <span className="mb-1.5 block text-sm font-semibold">Password</span>
           <input type="password" name="password" required autoComplete="current-password" className="h-12 w-full rounded-2xl border border-line bg-surface px-4 outline-none focus:border-accent" />
         </label>
-        {message && <p role="alert" className="font-semibold text-accent">{message}</p>}
-        <button disabled={pending} className="w-full rounded-full bg-accent py-3.5 font-bold text-accent-ink transition hover:brightness-110 disabled:opacity-60">
+        {message && <p role="alert" className="rise font-semibold text-danger">{message}</p>}
+        <button disabled={pending} className="btn btn-primary w-full py-3.5 disabled:opacity-60">
           {pending ? "Checking" : "Log in"}
         </button>
       </form>

@@ -22,7 +22,7 @@ export default function AdminPage(props: Props) {
 }
 
 const input = "h-11 w-full rounded-xl border border-line bg-bg px-3 text-sm outline-none focus:border-accent";
-const button = "rounded-full bg-accent px-5 py-2.5 text-sm font-bold text-accent-ink transition hover:brightness-110";
+const button = "btn btn-primary px-5 py-2.5 text-sm";
 
 const NEEDS_YOU: Order["status"][] = ["quote_requested", "received", "in_progress", "draft_ready"];
 
@@ -44,10 +44,10 @@ function OrderCard({ order }: { order: Order }) {
 
       <div className="space-y-5 border-t border-line p-5">
         {order.paymentAlert && (
-          <form action={adminClearAlert} className="flex flex-wrap items-center gap-3 rounded-2xl border border-accent/50 bg-accent-soft p-4">
+          <form action={adminClearAlert} className="flex flex-wrap items-center gap-3 rounded-2xl border border-danger/50 bg-danger/10 p-4">
             <input type="hidden" name="id" value={order.id} />
-            <p className="min-w-0 flex-1 break-words font-semibold text-accent">Payment needs a look: {order.paymentAlert}</p>
-            <button className="rounded-full border border-accent px-4 py-2 text-sm font-bold text-accent">I handled it</button>
+            <p className="min-w-0 flex-1 break-words font-semibold text-danger">Payment needs a look: {order.paymentAlert}</p>
+            <button className="btn border border-danger px-4 py-2 text-sm text-danger">I handled it</button>
           </form>
         )}
 
@@ -103,7 +103,7 @@ function OrderCard({ order }: { order: Order }) {
               <label className="block min-w-0 flex-1 font-semibold">Reason shown to the customer (optional)
                 <input name="note" maxLength={1000} className={`${input} mt-1`} />
               </label>
-              <button className="rounded-full border border-accent px-5 py-2.5 font-bold text-accent">Cancel order</button>
+              <button className="btn border border-danger px-5 py-2.5 text-danger">Cancel order</button>
             </form>
             {paid && <p className="mt-2 text-muted">Cancelling does not move money. Refund the payment in your Stripe dashboard.</p>}
           </details>

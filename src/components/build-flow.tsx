@@ -7,6 +7,7 @@ import { formatMoney } from "@/lib/money";
 import { checkAnswer, checkEmail, defaultAnswer, estimate, quote, type AnswerValue } from "@/lib/pricing";
 import type { Option, Question, Service } from "@/lib/services";
 import { MAX_ORDER_CENTS } from "@/lib/site";
+import { AnimatedPrice } from "./animated-price";
 import { ArrowLeft, ArrowRight, Check, Lock, Minus, Plus } from "./icons";
 
 const optionPrice = (o: Option) =>
@@ -21,10 +22,10 @@ function OptionCard({ option, selected, type, name, onPick, showPlus }: {
       ? `${showPlus ? "+" : ""}${formatMoney(option.price)}`
       : null;
   return (
-    <label className={`flex cursor-pointer items-center gap-4 rounded-2xl border p-4 transition active:scale-[0.99] ${selected ? "border-accent bg-accent-soft" : "border-line bg-surface hover:border-accent/50"}`}>
+    <label className={`flex cursor-pointer items-center gap-4 rounded-2xl border p-4 transition-[border-color,background-color,transform,box-shadow] duration-200 ease-out-strong active:scale-[0.985] ${selected ? "border-accent bg-accent-soft shadow-card" : "border-line bg-surface hover:border-accent/50"}`}>
       <input type={type} name={name} checked={selected} onChange={onPick} className="peer sr-only" />
-      <span className={`grid size-6 shrink-0 place-items-center border-2 transition peer-focus-visible:ring-2 peer-focus-visible:ring-accent ${type === "radio" ? "rounded-full" : "rounded-md"} ${selected ? "border-accent bg-accent text-accent-ink" : "border-line"}`}>
-        {selected && <Check width={14} height={14} strokeWidth={3} />}
+      <span className={`grid size-6 shrink-0 place-items-center border-2 transition-colors duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-accent ${type === "radio" ? "rounded-full" : "rounded-md"} ${selected ? "border-accent bg-accent text-accent-ink" : "border-line"}`}>
+        {selected && <Check width={14} height={14} strokeWidth={3} className="pop" />}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-semibold">{option.label}</span>
@@ -63,7 +64,7 @@ function QuestionInput({ question, value, onChange }: { question: Question; valu
   if (question.kind === "number") {
     const count = value as number;
     const set = (n: number) => onChange(Math.max(question.min, Math.min(question.max, Math.round(n) || question.min)));
-    const button = "grid size-12 place-items-center rounded-full border border-line bg-surface transition hover:border-accent hover:text-accent active:scale-95 disabled:opacity-40 disabled:hover:border-line disabled:hover:text-text";
+    const button = "grid size-12 place-items-center rounded-full border border-line bg-surface transition-[transform,border-color,color] duration-150 ease-out-strong hover:border-accent hover:text-accent active:scale-[0.94] disabled:opacity-40 disabled:hover:border-line disabled:hover:text-text";
     return (
       <div>
         <div className="flex items-center gap-4">
@@ -172,7 +173,7 @@ export function BuildFlow({ service }: { service: Service }) {
       ) : overCap ? (
         <p className="mt-1 font-display text-2xl font-extrabold">Custom quote</p>
       ) : (
-        <p key={price} className="rise mt-1 font-display text-5xl font-extrabold tabular-nums">{formatMoney(price)}</p>
+        <p className="mt-1 font-display text-5xl font-extrabold leading-none"><AnimatedPrice value={price} /></p>
       )}
       <p className="mt-2 text-sm text-muted">
         {service.quoteOnly
@@ -196,7 +197,7 @@ export function BuildFlow({ service }: { service: Service }) {
         <p className="text-sm font-semibold text-muted">{last ? "Last step" : `Step ${step + 1} of ${questions.length + 1}`}</p>
       </div>
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="Progress">
-        <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${Math.max(percent, 4)}%` }} />
+        <div className="h-full w-full origin-left rounded-full bg-accent transition-transform duration-500 ease-out-strong" style={{ transform: `scaleX(${Math.max(percent, 4) / 100})` }} />
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_20rem]">
@@ -216,13 +217,13 @@ export function BuildFlow({ service }: { service: Service }) {
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-semibold">Your name</span>
-                  <input value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} maxLength={80} autoComplete="name" className={`${field} ${fieldErrors.name ? "border-accent" : "border-line"}`} />
-                  {fieldErrors.name && <span className="mt-1 block text-sm font-semibold text-accent">{fieldErrors.name}</span>}
+                  <input value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} maxLength={80} autoComplete="name" className={`${field} ${fieldErrors.name ? "border-danger" : "border-line"}`} />
+                  {fieldErrors.name && <span className="mt-1 block text-sm font-semibold text-danger">{fieldErrors.name}</span>}
                 </label>
                 <label className="block">
                   <span className="mb-1.5 block text-sm font-semibold">Email</span>
-                  <input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} maxLength={254} autoComplete="email" className={`${field} ${fieldErrors.email ? "border-accent" : "border-line"}`} />
-                  {fieldErrors.email && <span className="mt-1 block text-sm font-semibold text-accent">{fieldErrors.email}</span>}
+                  <input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} maxLength={254} autoComplete="email" className={`${field} ${fieldErrors.email ? "border-danger" : "border-line"}`} />
+                  {fieldErrors.email && <span className="mt-1 block text-sm font-semibold text-danger">{fieldErrors.email}</span>}
                 </label>
                 {/* Honeypot: hidden from people, tempting to bots */}
                 <label className="hidden" aria-hidden="true">
@@ -246,21 +247,21 @@ export function BuildFlow({ service }: { service: Service }) {
             </>
           )}
 
-          {error && <p role="alert" className="mt-5 rounded-2xl border border-accent/40 bg-accent-soft px-4 py-3 font-semibold text-accent">{error}</p>}
+          {error && <p role="alert" className="rise mt-5 rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 font-semibold text-danger">{error}</p>}
 
           <div className="mt-8 flex items-center gap-3">
             {step > 0 && (
-              <button type="button" onClick={back} disabled={pending} className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-5 py-3 font-bold transition hover:border-text active:scale-[0.97]">
+              <button type="button" onClick={back} disabled={pending} className="btn btn-ghost px-5 py-3">
                 <ArrowLeft width={18} height={18} /> Back
               </button>
             )}
             {last ? (
-              <button type="button" onClick={submit} disabled={pending} className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-accent px-6 py-3.5 font-bold text-accent-ink transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60 sm:flex-none">
+              <button type="button" onClick={submit} disabled={pending} className="btn btn-primary flex-1 px-6 py-3.5 disabled:opacity-60 sm:flex-none">
                 {pending ? "One moment" : manual ? "Request my quote" : <><Lock width={16} height={16} /> Continue to payment · {formatMoney(price)}</>}
               </button>
             ) : (
-              <button type="button" onClick={next} className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-accent px-7 py-3.5 font-bold text-accent-ink transition hover:brightness-110 active:scale-[0.98] sm:flex-none">
-                Next <ArrowRight width={18} height={18} />
+              <button type="button" onClick={next} className="btn btn-primary flex-1 px-7 py-3.5 sm:flex-none">
+                Next <ArrowRight width={18} height={18} className="arrow" />
               </button>
             )}
           </div>
@@ -268,7 +269,7 @@ export function BuildFlow({ service }: { service: Service }) {
         </div>
 
         <aside className="hidden lg:block">
-          <div className="sticky top-24 rounded-3xl border border-line bg-surface p-6 shadow-card" aria-live="polite">
+          <div className="sticky top-24 rounded-3xl border border-line bg-surface p-6 shadow-float">
             {priceBox}
             <p className="mt-5 border-t border-line pt-4 text-sm text-muted">Usual delivery: <span className="font-semibold text-text">{service.delivery}</span></p>
           </div>
@@ -280,7 +281,7 @@ export function BuildFlow({ service }: { service: Service }) {
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-bg/95 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-xl lg:hidden">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-bold uppercase tracking-widest text-muted">{manual ? "Price" : "Price so far"}</span>
-            <span className="font-display text-2xl font-extrabold tabular-nums">{manual ? "Custom quote" : formatMoney(price)}</span>
+            <span className="font-display text-2xl font-extrabold">{manual ? "Custom quote" : <AnimatedPrice value={price} />}</span>
           </div>
         </div>
       )}

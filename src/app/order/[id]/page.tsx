@@ -66,7 +66,7 @@ async function OrderView({ params, searchParams }: Props) {
   const step = WORK_STATUSES.indexOf(order.status as (typeof WORK_STATUSES)[number]);
 
   return (
-    <div className="mx-auto max-w-3xl pt-10">
+    <div className="rise mx-auto max-w-3xl pt-10">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-accent">{order.serviceName} · {STATUS_LABEL[order.status]}</p>
       <div className="mt-2"><Headline order={order} /></div>
 
@@ -76,9 +76,11 @@ async function OrderView({ params, searchParams }: Props) {
             const reached = i <= step;
             return (
               <li key={status} aria-current={i === step ? "step" : undefined}>
-                <span className={`block h-2 rounded-full ${reached ? "bg-accent" : "bg-surface-2"}`} />
+                <span className="block h-2 overflow-hidden rounded-full bg-surface-2">
+                  {reached && <span className="fill-x block h-full rounded-full bg-good" style={{ "--delay": `${i * 220}ms` } as React.CSSProperties} />}
+                </span>
                 <span className={`mt-2 flex items-center gap-1.5 text-xs font-bold sm:text-sm ${reached ? "text-text" : "text-muted"}`}>
-                  {reached && <Check width={14} height={14} className="shrink-0 text-accent" strokeWidth={3} />}
+                  {i === step && order.status !== "done" ? <span className="live-dot shrink-0" /> : reached && <Check width={14} height={14} className="shrink-0 text-good" strokeWidth={3} />}
                   {STATUS_LABEL[status]}
                 </span>
               </li>
@@ -88,14 +90,14 @@ async function OrderView({ params, searchParams }: Props) {
       )}
 
       {order.customerNote && (
-        <section className="mt-8 rounded-3xl border border-line bg-surface p-5 sm:p-6">
+        <section className="mt-8 rounded-3xl border border-line bg-surface p-5 shadow-card sm:p-6">
           <h2 className="text-sm font-bold uppercase tracking-widest text-muted">Message from us</h2>
           <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed">{order.customerNote}</p>
         </section>
       )}
 
       {order.deliveryUrl && order.paidAt && order.status !== "cancelled" && (
-        <a href={order.deliveryUrl} target="_blank" rel="noreferrer noopener" className="mt-6 flex items-center justify-between gap-4 rounded-3xl bg-accent p-5 font-bold text-accent-ink transition hover:brightness-110 sm:p-6">
+        <a href={order.deliveryUrl} target="_blank" rel="noreferrer noopener" className="group mt-6 flex items-center justify-between gap-4 rounded-3xl bg-accent p-5 font-bold text-accent-ink shadow-card transition-[filter,transform] duration-200 ease-out-strong hover:brightness-110 active:scale-[0.99] sm:p-6">
           <span>
             <span className="block text-lg">{order.status === "done" ? "Open your finished work" : "Open your draft"}</span>
             <span className="block break-all text-sm font-medium opacity-85">{order.deliveryUrl}</span>
@@ -114,7 +116,7 @@ async function OrderView({ params, searchParams }: Props) {
             {paymentsConfigured() ? (
               <form action={payOrder}>
                 <input type="hidden" name="id" value={order.id} />
-                <button className="inline-flex items-center gap-2 rounded-full bg-accent px-7 py-3.5 font-bold text-accent-ink transition hover:brightness-110 active:scale-[0.97]">
+                <button className="btn btn-primary px-7 py-3.5">
                   <Lock width={16} height={16} /> Pay securely
                 </button>
               </form>
@@ -122,7 +124,7 @@ async function OrderView({ params, searchParams }: Props) {
               <p className="max-w-xs text-sm font-semibold text-warn">Online payment is not switched on yet. Your order is saved, please check back soon.</p>
             )}
           </div>
-          {pay === "error" && <p role="alert" className="mt-4 font-semibold text-accent">We could not open the payment page. You were not charged. Please try again.</p>}
+          {pay === "error" && <p role="alert" className="mt-4 font-semibold text-danger">We could not open the payment page. You were not charged. Please try again.</p>}
         </section>
       )}
 

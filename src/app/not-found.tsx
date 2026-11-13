@@ -7,7 +7,7 @@ export default function NotFound() {
         <p className="font-display text-7xl font-extrabold text-accent">404</p>
         <h1 className="mt-3 text-2xl font-bold">We could not find that page</h1>
         <p className="mt-2 text-muted">If you were looking for an order, check that the link is complete.</p>
-        <Link href="/" className="mt-6 inline-block rounded-full bg-accent px-6 py-3 font-semibold text-accent-ink">Back to home</Link>
+        <Link href="/" className="btn btn-primary mt-6 px-6 py-3">Back to home</Link>
       </div>
     </div>
   );
