@@ -8,6 +8,8 @@ import { DatabaseNotConfigured } from "@/lib/db";
 import { formatDateTime, formatMoney } from "@/lib/money";
 import { listOrders, STATUS_LABEL, WORK_STATUSES, type Order } from "@/lib/orders";
 import { paymentsConfigured } from "@/lib/payments";
+import { getBaseUrl } from "@/lib/request";
+import { SITE_NAME } from "@/lib/site";
 
 export const metadata: Metadata = { title: "Orders", robots: { index: false, follow: false } };
 
@@ -26,7 +28,7 @@ const button = "btn btn-primary px-5 py-2.5 text-sm";
 
 const NEEDS_YOU: Order["status"][] = ["quote_requested", "received", "in_progress", "draft_ready"];
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({ order, baseUrl }: { order: Order; baseUrl: string }) {
   const paid = order.paidAt !== null;
   const open = NEEDS_YOU.includes(order.status) || order.paymentAlert !== null;
   const canQuote = !paid && (order.status === "quote_requested" || order.status === "quote_ready");
@@ -38,7 +40,9 @@ function OrderCard({ order }: { order: Order }) {
         </span>
         <span className="font-bold">{order.serviceName}</span>
         <span className="text-sm text-muted">{order.name} · {order.email}</span>
-        <span className="ml-auto font-display text-lg font-extrabold tabular-nums">{order.amountCents === null ? "No price yet" : formatMoney(order.amountCents)}</span>
+        <span className="ml-auto font-display text-lg font-extrabold tabular-nums">
+          {order.amountCents !== null ? formatMoney(order.amountCents) : order.estimate ? `est. ${formatMoney(order.estimate.low)} to ${formatMoney(order.estimate.high)}` : "No estimate"}
+        </span>
         <span className="w-full text-xs text-muted">{formatDateTime(order.createdAt)}{paid ? ` · paid ${formatDateTime(order.paidAt!)}` : " · not paid"}</span>
       </summary>
 
@@ -54,26 +58,47 @@ function OrderCard({ order }: { order: Order }) {
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {order.lines.map((line) => (
             <div key={line.label} className={line.value.length > 80 ? "sm:col-span-2" : ""}>
-              <dt className="text-xs font-semibold text-muted">{line.label}</dt>
+              <dt className="text-xs font-semibold text-muted">
+                {line.label}
+                {/* Only you see these: what each answer added to the estimate */}
+                {(line.amount > 0 || line.multiplier) && (
+                  <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 font-bold">{line.multiplier ? `x${line.multiplier}` : `+${formatMoney(line.amount)}`}</span>
+                )}
+              </dt>
               <dd className="mt-0.5 whitespace-pre-wrap break-words">{line.value}</dd>
             </div>
           ))}
         </dl>
         <p className="text-sm">
           <Link href={`/order/${order.id}`} className="font-semibold text-accent hover:underline">Open the customer order page</Link>
+          <span className="text-muted"> · </span>
+          <a
+            className="font-semibold text-accent hover:underline"
+            href={`mailto:${order.email}?subject=${encodeURIComponent(`Your ${SITE_NAME} order`)}&body=${encodeURIComponent(`Hi ${order.name},\n\nThere is an update on your ${order.serviceName} request. You can see it here:\n${baseUrl}/order/${order.id}\n`)}`}
+          >
+            Email the customer their link
+          </a>
           {order.stripePaymentIntent && <span className="text-muted"> · Stripe payment <code className="break-all">{order.stripePaymentIntent}</code></span>}
         </p>
 
         {canQuote && (
           <form action={adminSetQuote} className="grid gap-3 rounded-2xl bg-surface-2 p-4 sm:grid-cols-[9rem_1fr_auto] sm:items-end">
             <input type="hidden" name="id" value={order.id} />
-            <label className="block text-sm font-semibold">Price in USD
-              <input name="price" inputMode="decimal" required placeholder="80" defaultValue={order.amountCents ? order.amountCents / 100 : ""} className={`${input} mt-1`} />
+            <p className="text-sm text-muted sm:col-span-3">
+              {order.estimate
+                ? <>The customer was shown an estimate of <span className="font-bold text-text">{formatMoney(order.estimate.low)} to {formatMoney(order.estimate.high)}</span>. Set the final price. If you go outside that range, say why in the note.</>
+                : "No estimate was shown for this request. Set the price by hand."}
+            </p>
+            <label className="block text-sm font-semibold">Final price in USD
+              <input
+                name="price" inputMode="decimal" required placeholder="80" className={`${input} mt-1`}
+                defaultValue={order.amountCents ? order.amountCents / 100 : order.estimate ? Math.round((order.estimate.low + order.estimate.high) / 200) : ""}
+              />
             </label>
             <label className="block text-sm font-semibold">Note to the customer (optional)
               <input name="note" maxLength={1000} defaultValue={order.customerNote ?? ""} placeholder="What the price covers" className={`${input} mt-1`} />
             </label>
-            <button className={button}>{order.status === "quote_ready" ? "Change quote" : "Send quote"}</button>
+            <button className={button}>{order.status === "quote_ready" ? "Change price" : "Confirm price"}</button>
           </form>
         )}
 
@@ -119,6 +144,7 @@ async function AdminView({ searchParams }: Props) {
   if (!(await isAdmin())) redirect("/admin/login");
   const { msg } = await searchParams;
 
+  const baseUrl = await getBaseUrl();
   let orders: Order[];
   try {
     orders = await listOrders();
@@ -147,7 +173,7 @@ async function AdminView({ searchParams }: Props) {
       {!paymentsConfigured() && <p className="mt-4 rounded-2xl border border-warn/50 bg-warn/10 p-4 font-semibold text-warn">Stripe is not connected (STRIPE_SECRET_KEY is missing), so customers cannot pay yet.</p>}
       {msg && <p role="status" className="mt-4 rounded-2xl border border-line bg-surface p-4 font-semibold">{msg}</p>}
       <div className="mt-6 space-y-3">
-        {orders.length === 0 ? <p className="rounded-3xl border border-dashed border-line p-10 text-center text-muted">No orders yet.</p> : orders.map((order) => <OrderCard key={order.id} order={order} />)}
+        {orders.length === 0 ? <p className="rounded-3xl border border-dashed border-line p-10 text-center text-muted">No orders yet.</p> : orders.map((order) => <OrderCard key={order.id} order={order} baseUrl={baseUrl} />)}
       </div>
     </div>
   );

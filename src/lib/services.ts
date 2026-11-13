@@ -1,8 +1,10 @@
 /**
- * Every service the site sells, with its questions and prices.
- * All prices are in cents. To add a service, add an entry to SERVICES.
- * The price shown to customers and the price charged both come from this file
- * through `quote()` in pricing.ts, so they can never disagree.
+ * Every service the site sells, with its questions.
+ *
+ * Customers never see the numbers in this file. They are the basis for the
+ * ESTIMATE shown after the questions: `quote()` in pricing.ts adds them up and
+ * turns the result into a range. The owner then confirms the final price by hand.
+ * All amounts are in cents. To add a service, add an entry to SERVICES.
  */
 
 export interface Option {
@@ -41,8 +43,6 @@ export interface Service {
   name: string;
   tagline: string;
   icon: "globe" | "pen" | "palette" | "code" | "sparkles";
-  /** Shown on cards as "from". Must be the cheapest price the questions can produce. */
-  startingAt: number;
   delivery: string;
   /** true: never priced automatically, the owner sets the price by hand */
   quoteOnly?: boolean;
@@ -60,11 +60,36 @@ const RUSH: Question = {
   ],
 };
 
+/** How hard the job is. Used by services that have no other measure of size. */
+const COMPLEXITY: Question = {
+  id: "complexity",
+  kind: "choice",
+  label: "How complex is it?",
+  help: "Your best guess is fine. We check it before confirming your price.",
+  options: [
+    { id: "simple", label: "Simple", hint: "One clear, small job" },
+    { id: "medium", label: "Medium", hint: "A few connected parts", multiplier: 1.5 },
+    { id: "complex", label: "Complex", hint: "Many parts, or tricky details", multiplier: 2.2 },
+  ],
+};
+
+/** How far the work is taken. */
+const LEVEL: Question = {
+  id: "level",
+  kind: "choice",
+  label: "What level of finish do you want?",
+  options: [
+    { id: "basic", label: "Basic", hint: "Clean and working, no extras" },
+    { id: "polished", label: "Polished", hint: "Extra care on the details", multiplier: 1.35 },
+    { id: "premium", label: "Premium", hint: "Our best work, top to bottom", multiplier: 1.8 },
+  ],
+};
+
 const REVISIONS: Question = {
   id: "revisions",
   kind: "number",
   label: "How many rounds of changes do you want?",
-  help: "One round is included. A round is one list of changes after you see the draft.",
+  help: "A round is one list of changes after you see the draft.",
   min: 1,
   max: 6,
   included: 1,
@@ -99,7 +124,6 @@ export const SERVICES: Service[] = [
     name: "Website",
     tagline: "A clean site for you or your business",
     icon: "globe",
-    startingAt: 149_00,
     delivery: "3 to 7 days",
     examples: ["Landing page", "Portfolio", "Small business site", "Online store"],
     questions: [
@@ -117,7 +141,7 @@ export const SERVICES: Service[] = [
         id: "pages",
         kind: "number",
         label: "How many pages?",
-        help: "Three pages are included with multi page and store sites. One page sites stay at 1.",
+        help: "Count every separate page. One page sites stay at 1.",
         min: 1,
         max: 20,
         included: 3,
@@ -137,6 +161,7 @@ export const SERVICES: Service[] = [
           { id: "copy", label: "Write the text for me", price: 60_00 },
         ],
       },
+      LEVEL,
       details("Tell us about it", "What is the site for, who is it for, and what should visitors do on it?"),
       LINKS,
       REVISIONS,
@@ -148,7 +173,6 @@ export const SERVICES: Service[] = [
     name: "Writing",
     tagline: "Resumes, cover letters and product text",
     icon: "pen",
-    startingAt: 19_00,
     delivery: "1 to 2 days",
     examples: ["Resume", "Cover letter", "Product descriptions", "About page"],
     questions: [
@@ -160,7 +184,7 @@ export const SERVICES: Service[] = [
           { id: "cover", label: "Cover letter", price: 19_00 },
           { id: "resume", label: "Resume", price: 29_00 },
           { id: "both", label: "Resume and cover letter", price: 42_00 },
-          { id: "product", label: "Product descriptions", hint: "Up to 5 products included", price: 25_00 },
+          { id: "product", label: "Product descriptions", price: 25_00 },
           { id: "other", label: "Something else", hint: "Up to 500 words", price: 25_00 },
         ],
       },
@@ -168,13 +192,15 @@ export const SERVICES: Service[] = [
         id: "items",
         kind: "number",
         label: "How many items?",
-        help: "For product descriptions this is the number of products (5 included). For everything else leave it at 5.",
+        help: "For product descriptions this is the number of products. For everything else leave it at 5.",
         min: 5,
         max: 100,
         included: 5,
         unitPrice: 4_00,
         unit: "item",
       },
+      COMPLEXITY,
+      LEVEL,
       details("Give us the details", "Paste your experience, the job you want, or the products. The more you give, the better it reads."),
       {
         id: "tone",
@@ -195,7 +221,6 @@ export const SERVICES: Service[] = [
     name: "Logos and thumbnails",
     tagline: "Graphics for channels, brands and shops",
     icon: "palette",
-    startingAt: 12_00,
     delivery: "1 to 3 days",
     examples: ["Logo", "YouTube thumbnail", "Brand kit", "Channel banner"],
     questions: [
@@ -204,7 +229,7 @@ export const SERVICES: Service[] = [
         kind: "choice",
         label: "What should we design?",
         options: [
-          { id: "thumbnail", label: "Thumbnail", hint: "Price is for each one", price: 12_00 },
+          { id: "thumbnail", label: "Thumbnail", price: 12_00 },
           { id: "banner", label: "Channel banner", price: 25_00 },
           { id: "logo", label: "Logo", price: 39_00 },
           { id: "kit", label: "Logo and brand kit", hint: "Logo, colors and fonts", price: 79_00 },
@@ -214,13 +239,14 @@ export const SERVICES: Service[] = [
         id: "quantity",
         kind: "number",
         label: "How many?",
-        help: "Extra ones cost less than the first.",
         min: 1,
         max: 30,
         included: 1,
         unitPrice: 9_00,
         unit: "extra",
       },
+      COMPLEXITY,
+      LEVEL,
       details("Describe what you want", "Name, style, colors, and the feeling it should give."),
       LINKS,
       REVISIONS,
@@ -232,7 +258,6 @@ export const SERVICES: Service[] = [
     name: "Scripts and automations",
     tagline: "Small tools that save you time",
     icon: "code",
-    startingAt: 49_00,
     delivery: "2 to 5 days",
     examples: ["Discord bot", "Python script", "Spreadsheet automation", "Web scraper for your own data"],
     questions: [
@@ -247,16 +272,8 @@ export const SERVICES: Service[] = [
           { id: "automation", label: "Automation between apps", price: 129_00 },
         ],
       },
-      {
-        id: "size",
-        kind: "choice",
-        label: "How big is the job?",
-        options: [
-          { id: "small", label: "Small", hint: "One clear task" },
-          { id: "medium", label: "Medium", hint: "A few connected tasks", multiplier: 1.6 },
-          { id: "large", label: "Large", hint: "Many steps or moving parts", multiplier: 2.4 },
-        ],
-      },
+      COMPLEXITY,
+      LEVEL,
       {
         id: "extras",
         kind: "multi",
@@ -274,9 +291,8 @@ export const SERVICES: Service[] = [
   {
     id: "custom",
     name: "Something else",
-    tagline: "Describe any idea and we will price it for you",
+    tagline: "Describe any idea and we will tell you what it takes",
     icon: "sparkles",
-    startingAt: 0,
     delivery: "Depends on the job",
     quoteOnly: true,
     examples: ["A slide deck", "A study guide", "A custom calculator", "Anything you can describe"],
@@ -292,6 +308,7 @@ export const SERVICES: Service[] = [
           { id: "50to200", label: "$50 to $200" },
           { id: "200to800", label: "$200 to $800" },
           { id: "800plus", label: "$800 to $2,000" },
+          { id: "unsure", label: "Not sure yet" },
         ],
       },
       {

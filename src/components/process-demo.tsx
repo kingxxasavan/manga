@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AnimatedPrice } from "./animated-price";
 import { Check, Lock, ServiceIcon } from "./icons";
 
 const DURATION = 4500;
 
 const STEPS = [
-  { title: "Pick what you need", body: "Every service shows its starting price up front, so you know the ballpark before you begin." },
-  { title: "Answer a few questions", body: "Quick taps, no calls. The price moves with every answer, and what you see is what you pay." },
-  { title: "Pay securely", body: "Checkout runs on Stripe. Your card details never touch this site." },
+  { title: "Pick what you need", body: "Choose the kind of work. There are no price lists to study first." },
+  { title: "Tell us about it", body: "A few quick taps about how complex the job is and the level of finish you want." },
+  { title: "Get your estimate, then pay", body: "You see an estimated price right away. We confirm the final price, and only then do you pay, securely on Stripe." },
   { title: "Track it to done", body: "A private link shows where your order is, with messages and your files when they are ready." },
 ];
 
@@ -33,10 +32,10 @@ function useSequence<T>(initial: T, changes: [number, T][]): T {
 function PickStage() {
   const picked = useSequence(false, [[900, true]]);
   const tiles = [
-    { icon: "globe", name: "Website", from: "$149" },
-    { icon: "pen", name: "Writing", from: "$19" },
-    { icon: "palette", name: "Logos", from: "$12" },
-    { icon: "code", name: "Scripts", from: "$49" },
+    { icon: "globe", name: "Website", note: "Sites and stores" },
+    { icon: "pen", name: "Writing", note: "Resumes and copy" },
+    { icon: "palette", name: "Logos", note: "Brand graphics" },
+    { icon: "code", name: "Scripts", note: "Small tools" },
   ] as const;
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -47,7 +46,7 @@ function PickStage() {
             <div className={`rounded-2xl border p-4 transition-[border-color,background-color,transform] duration-300 ease-out-strong ${on ? "border-accent bg-accent-soft" : "border-line bg-surface"}`} style={{ transform: on ? "scale(1.03)" : "none" }}>
               <span className="grid size-9 place-items-center rounded-xl bg-accent-soft text-accent"><ServiceIcon name={tile.icon} width={18} height={18} /></span>
               <p className="mt-3 font-bold">{tile.name}</p>
-              <p className="text-sm text-muted">from {tile.from}</p>
+              <p className="text-sm text-muted">{tile.note}</p>
             </div>
           </After>
         );
@@ -57,21 +56,15 @@ function PickStage() {
 }
 
 function AnswerStage() {
-  const stage = useSequence(0, [[700, 1], [1700, 2], [2700, 3]]);
-  const price = [149_00, 299_00, 359_00, 467_00][stage];
-  const options = ["One page", "Multi page", "Online store"];
+  const stage = useSequence(0, [[800, 1], [1800, 2], [2700, 3]]);
+  const options = ["Simple", "Medium", "Complex"];
   return (
     <div>
-      <div className="flex items-start justify-between gap-4">
-        <p className="font-display text-lg font-extrabold">What kind of website?</p>
-        <div className="text-right">
-          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Price so far</p>
-          <AnimatedPrice value={price} className="font-display text-3xl font-extrabold" />
-        </div>
-      </div>
+      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Question 2 of 6</p>
+      <p className="mt-1 font-display text-lg font-extrabold">How complex is it?</p>
       <div className="mt-4 space-y-2">
         {options.map((option, i) => {
-          const on = stage >= 1 ? i === 1 : i === 0;
+          const on = stage >= 1 && i === 1;
           return (
             <div key={option} className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 text-sm font-semibold transition-colors duration-300 ${on ? "border-accent bg-accent-soft" : "border-line bg-surface"}`}>
               <span className={`grid size-5 place-items-center rounded-full border-2 transition-colors duration-300 ${on ? "border-accent bg-accent text-accent-ink" : "border-line"}`}>
@@ -83,35 +76,38 @@ function AnswerStage() {
         })}
       </div>
       <div className="mt-3 flex min-h-8 flex-wrap gap-2">
-        {stage >= 2 && <span className="pop rounded-full bg-surface-2 px-3 py-1.5 text-xs font-bold">+ Blog $60</span>}
-        {stage >= 3 && <span className="pop rounded-full bg-surface-2 px-3 py-1.5 text-xs font-bold">+ Rush 30%</span>}
+        {stage >= 2 && <span className="pop rounded-full bg-surface-2 px-3 py-1.5 text-xs font-bold">Polished finish</span>}
+        {stage >= 3 && <span className="pop rounded-full bg-surface-2 px-3 py-1.5 text-xs font-bold">2 rounds of changes</span>}
       </div>
     </div>
   );
 }
 
 function PayStage() {
-  const paid = useSequence(false, [[1900, true]]);
+  const stage = useSequence(0, [[900, 1], [2000, 2], [3100, 3]]);
   return (
     <div>
       <After ms={0}>
         <div className="rounded-2xl border border-line bg-surface p-4">
-          <div className="flex justify-between text-sm"><span className="text-muted">Website, multi page</span><span className="font-semibold">$359</span></div>
-          <div className="mt-2 flex justify-between text-sm"><span className="text-muted">Rush delivery</span><span className="font-semibold">+30%</span></div>
-          <div className="mt-3 flex items-end justify-between border-t border-line pt-3">
-            <span className="font-bold">Total</span><span className="font-display text-3xl font-extrabold tabular-nums">$467</span>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted">Your estimated price</p>
+          {/* A range, drawn rather than numbered: the real one depends on the request */}
+          <div className="relative mt-4 h-2 rounded-full bg-surface-2">
+            <span className="absolute inset-y-0 left-[28%] w-[44%] origin-left rounded-full bg-accent transition-transform duration-700 ease-out-strong" style={{ transform: stage >= 1 ? "scaleX(1)" : "scaleX(0)" }} />
           </div>
+          <div className="mt-2 flex justify-between px-[24%] text-[11px] font-bold text-muted"><span>Low</span><span>High</span></div>
         </div>
       </After>
-      <After ms={120}>
-        <div className="mt-3 flex items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 text-sm">
-          <span className="h-6 w-9 rounded-md bg-gradient-to-br from-accent to-good" />
-          <span className="font-mono tracking-widest text-muted">•••• 4242</span>
-        </div>
-      </After>
+      <div className="mt-3 min-h-[3.25rem]">
+        {stage >= 2 && (
+          <div className="rise flex items-center gap-3 rounded-xl border border-good/40 bg-good/10 px-3.5 py-3 text-sm font-semibold">
+            <span className="grid size-5 place-items-center rounded-full bg-good text-[#04130c]"><Check width={12} height={12} strokeWidth={3.5} /></span>
+            Final price confirmed by us
+          </div>
+        )}
+      </div>
       <After ms={240}>
-        <div className={`mt-3 flex h-12 items-center justify-center gap-2 rounded-full text-sm font-bold transition-colors duration-300 ${paid ? "bg-good text-[#04130c]" : "bg-accent text-accent-ink"}`}>
-          {paid ? <span key="paid" className="pop flex items-center gap-2"><Check width={16} height={16} strokeWidth={3} /> Payment received</span> : <span className="flex items-center gap-2"><Lock width={15} height={15} /> Pay securely</span>}
+        <div className={`mt-3 flex h-12 items-center justify-center gap-2 rounded-full text-sm font-bold transition-[background-color,color,opacity] duration-300 ${stage >= 3 ? "bg-good text-[#04130c]" : "bg-accent text-accent-ink"}`} style={{ opacity: stage >= 2 ? 1 : 0.4 }}>
+          {stage >= 3 ? <span key="paid" className="pop flex items-center gap-2"><Check width={16} height={16} strokeWidth={3} /> Payment received</span> : <span className="flex items-center gap-2"><Lock width={15} height={15} /> Pay securely</span>}
         </div>
       </After>
     </div>

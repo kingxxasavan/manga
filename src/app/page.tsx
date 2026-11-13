@@ -3,21 +3,20 @@ import { HeroQuote } from "@/components/hero-quote";
 import { ArrowRight, Check, Clock, Lock, ServiceIcon } from "@/components/icons";
 import { ProcessDemo } from "@/components/process-demo";
 import { Reveal } from "@/components/reveal";
-import { formatMoney } from "@/lib/money";
 import { SERVICES } from "@/lib/services";
-import { MAX_ORDER_CENTS } from "@/lib/site";
 
 const PROMISES = [
-  { title: "The price is the price", body: "It comes from a fixed list, not a guess. What you see before checkout is exactly what you are charged." },
+  { title: "No charge until you agree", body: "You get an estimate first, then a confirmed price. You pay only after you have seen the final number and are happy with it." },
   { title: "Changes are included", body: "Every order comes with a round of changes, and you can add more rounds when you order." },
   { title: "You always know where it is", body: "Your private order page shows each step from received to done, with our notes along the way." },
-  { title: "Nothing to sign up for", body: "No account, no calls, no back and forth emails just to find out what something costs." },
+  { title: "Priced on the actual job", body: "Your price follows how complex the work is and the level of finish you want, not a one size fits all package." },
 ];
 
 const FAQ = [
-  { q: "How is the price decided?", a: "From a fixed price list. Each answer you give adds a known amount, and you watch the total change as you go. The price you see before paying is the price you pay." },
-  { q: "What if my project is bigger than the options?", a: `Choose "Something else" and describe it. We reply with a price on your order page before you pay anything. Orders above ${formatMoney(MAX_ORDER_CENTS)} are always quoted by hand.` },
-  { q: "Do I need an account?", a: "No. After you order you get a private link to your order page. Keep that link, it is how you check progress and collect your files." },
+  { q: "How is the price decided?", a: "By how complex the job is and the level of finish you want. Right after the questions you see an estimated price range. We then look at your request and confirm the final price before you pay anything." },
+  { q: "When do I pay?", a: "Only after we confirm the final price on your order page and you accept it. Sending a request costs nothing." },
+  { q: "What if my project is bigger than the options?", a: 'Choose "Something else" and describe it. We reply with a price on your order page. Very large projects get no automatic estimate and are always priced by hand.' },
+  { q: "Do I need an account?", a: "No. After you send a request you get a private link to your order page. Keep that link, it is where your final price appears and how you check progress and collect your files." },
   { q: "How do I pay?", a: "On a Stripe checkout page, by card. This site never sees or stores your card details." },
   { q: "What if I am not happy with it?", a: "Every order includes at least one round of changes, and you can add more when you order. The refunds page has the full details." },
 ];
@@ -36,10 +35,10 @@ export default function HomePage() {
               <span className="live-dot" /> Taking new orders
             </p>
             <h1 className="rise mt-6 text-[2.75rem] font-extrabold leading-[1.02] sm:text-6xl lg:text-[4.25rem]" style={{ animationDelay: "60ms" }}>
-              Describe it.<br />See the price.<br /><span className="text-gradient">We build it.</span>
+              Describe it.<br />Get an estimate.<br /><span className="text-gradient">We build it.</span>
             </h1>
             <p className="rise mt-6 max-w-lg text-lg leading-relaxed text-muted" style={{ animationDelay: "120ms" }}>
-              Websites, writing, graphics and small tools, made to order. Answer a few questions, watch your price build live, and follow your order to the finish.
+              Websites, writing, graphics and small tools, made to order. Answer a few questions, get an estimated price based on how complex it is, and follow your order to the finish.
             </p>
             <div className="rise mt-8 flex flex-wrap gap-3" style={{ animationDelay: "180ms" }}>
               <Link href="#services" className="btn btn-light px-7 py-3.5">
@@ -50,8 +49,8 @@ export default function HomePage() {
               </Link>
             </div>
             <ul className="rise mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted" style={{ animationDelay: "240ms" }}>
-              <li className="inline-flex items-center gap-2"><Lock width={15} height={15} /> Secure checkout by Stripe</li>
-              <li className="inline-flex items-center gap-2"><Clock width={15} height={15} /> A price in about a minute</li>
+              <li className="inline-flex items-center gap-2"><Lock width={15} height={15} /> No payment until you agree</li>
+              <li className="inline-flex items-center gap-2"><Clock width={15} height={15} /> An estimate in about a minute</li>
               <li className="inline-flex items-center gap-2"><Check width={15} height={15} /> No account needed</li>
             </ul>
           </div>
@@ -66,7 +65,7 @@ export default function HomePage() {
         <Reveal>
           <p className={eyebrow}>Services</p>
           <h2 className="mt-3 text-4xl font-extrabold sm:text-5xl">What can we build for you?</h2>
-          <p className="mt-3 max-w-xl text-lg text-muted">Pick one to start. You will have a price in about a minute, and you only pay once you have seen it.</p>
+          <p className="mt-3 max-w-xl text-lg text-muted">Pick one and tell us about it. Your estimate depends on how complex the job is and the level of finish you want.</p>
         </Reveal>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {SERVICES.map((service, i) => (
@@ -85,13 +84,13 @@ export default function HomePage() {
                     <li key={example} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted">{example}</li>
                   ))}
                 </ul>
-                <div className="mt-auto flex items-end justify-between gap-3 pt-7">
-                  <p>
-                    <span className="block text-[11px] font-bold uppercase tracking-[0.16em] text-muted">{service.quoteOnly ? "Price" : "From"}</span>
-                    <span className="font-display text-3xl font-extrabold">{service.quoteOnly ? "Custom quote" : formatMoney(service.startingAt)}</span>
+                <div className="mt-auto flex items-center justify-between gap-3 pt-7">
+                  <p className="text-sm text-muted">
+                    <span className="block text-[11px] font-bold uppercase tracking-[0.16em]">Usual delivery</span>
+                    <span className="font-semibold text-text">{service.delivery}</span>
                   </p>
-                  <span className="inline-flex items-center gap-1.5 text-sm font-bold text-accent">
-                    Build <ArrowRight width={16} height={16} className="arrow" />
+                  <span className={`btn px-5 py-2.5 text-sm ${service.quoteOnly ? "btn-light" : "btn-primary"}`}>
+                    Build it <ArrowRight width={16} height={16} className="arrow" />
                   </span>
                 </div>
               </Link>
@@ -162,7 +161,7 @@ export default function HomePage() {
         <section className="panel-dark on-dark rounded-[2rem] px-6 py-16 text-center sm:rounded-[2.5rem] sm:px-10">
           <span className="glow glow-a" /><span className="glow glow-b" />
           <h2 className="mx-auto max-w-2xl text-4xl font-extrabold sm:text-5xl">Have something in mind?</h2>
-          <p className="mx-auto mt-3 max-w-md text-lg text-muted">Get your price in about a minute. You only pay once you have seen it.</p>
+          <p className="mx-auto mt-3 max-w-md text-lg text-muted">Get your estimate in about a minute. Sending a request costs nothing.</p>
           <Link href="#services" className="btn btn-light mt-8 px-8 py-4">
             Pick a service <ArrowRight width={18} height={18} className="arrow" />
           </Link>

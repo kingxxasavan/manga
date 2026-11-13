@@ -23,11 +23,27 @@ describe("orders", () => {
   it("creates a priced order waiting for payment and reads it back intact", async () => {
     const order = await createOrder(input(149_00));
     expect(isOrderId(order.id)).toBe(true);
-    expect(order).toMatchObject({ status: "awaiting_payment", amountCents: 149_00, paidAt: null, email: "a@b.co" });
+    expect(order).toMatchObject({ status: "awaiting_payment", amountCents: 149_00, paidAt: null, email: "a@b.co", estimate: null });
     const again = await getOrder(order.id);
     expect(again).toEqual(order);
     expect(again!.answers).toEqual({ type: "landing", pages: 1, features: ["form"] });
     expect(canPay(order)).toBe(true);
+  });
+
+  it("stores the estimate the customer was shown, and refuses a broken one", async () => {
+    const order = await createOrder({ ...input(null), estimate: { low: 250_00, high: 345_00 } });
+    expect(order).toMatchObject({ status: "quote_requested", amountCents: null, estimate: { low: 250_00, high: 345_00 } });
+    expect((await getOrder(order.id))!.estimate).toEqual({ low: 250_00, high: 345_00 });
+    expect((await createOrder(input(null))).estimate).toBeNull();
+    await expect(createOrder({ ...input(null), estimate: { low: 345_00, high: 250_00 } })).rejects.toThrow();
+    await expect(createOrder({ ...input(null), estimate: { low: 100_00, high: 9000_00 } })).rejects.toThrow();
+    await expect(createOrder({ ...input(null), estimate: { low: 1, high: 10_00 } })).rejects.toThrow();
+  });
+
+  it("keeps the estimate when the owner sets a different final price", async () => {
+    const order = await createOrder({ ...input(null), estimate: { low: 250_00, high: 345_00 } });
+    expect(await setQuote(order.id, 400_00, "Bigger than it looked.")).toBe(true);
+    expect(await getOrder(order.id)).toMatchObject({ amountCents: 400_00, status: "quote_ready", estimate: { low: 250_00, high: 345_00 } });
   });
 
   it("refuses amounts outside 5 to 2000 dollars", async () => {

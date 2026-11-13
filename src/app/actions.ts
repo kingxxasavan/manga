@@ -8,7 +8,7 @@ import {
 import {
   cancelOrder, clearPaymentAlert, createOrder, getOrder, isOrderId, setProgress, setQuote, WORK_STATUSES, type WorkStatus,
 } from "@/lib/orders";
-import { checkoutUrl, paymentsConfigured, retireOpenSession } from "@/lib/payments";
+import { checkoutUrl, retireOpenSession } from "@/lib/payments";
 import { checkEmail, quote } from "@/lib/pricing";
 import { allow, getBaseUrl, getClientIp } from "@/lib/request";
 import { getService } from "@/lib/services";
@@ -29,7 +29,7 @@ export async function submitOrder(serviceId: unknown, answers: unknown, contact:
   if (contact.website) return { ok: true, url: "/" };
 
   if (!allow(`order:${await getClientIp()}`, 8, 10 * 60_000)) {
-    return { ok: false, errors: {}, message: "Too many orders from this connection. Please wait a few minutes." };
+    return { ok: false, errors: {}, message: "Too many requests from this connection. Please wait a few minutes." };
   }
 
   const errors: Record<string, string> = {};
@@ -38,41 +38,29 @@ export async function submitOrder(serviceId: unknown, answers: unknown, contact:
   const name = typeof contact.name === "string" ? contact.name.trim() : "";
   if (name.length < 1 || name.length > 80) errors.name = "Enter your name.";
 
-  // The price is worked out here from the answers. Nothing priced by the browser is used.
+  // The estimate is worked out here from the answers. No number sent by the browser is used.
   const result = quote(service, answers);
   if (!result.ok) Object.assign(errors, result.errors);
   if (!result.ok || !email || Object.keys(errors).length > 0) return { ok: false, errors };
 
-  let order;
+  // Nothing is charged at this step. The request is saved with the estimate the
+  // customer saw, the owner confirms a final price, and only then can it be paid.
   try {
-    order = await createOrder({
+    const order = await createOrder({
       serviceId: service.id,
       serviceName: service.name,
       email,
       name,
       answers: result.answers,
       lines: result.quote.lines,
-      amountCents: result.quote.needsManualQuote ? null : result.quote.total,
+      estimate: result.quote.estimate,
+      amountCents: null,
     });
+    return { ok: true, url: `/order/${order.id}` };
   } catch (error) {
-    console.error("submitOrder could not save the order", error);
-    return { ok: false, errors: {}, message: "We could not save your order. Nothing was charged. Please try again in a moment." };
+    console.error("submitOrder could not save the request", error);
+    return { ok: false, errors: {}, message: "We could not save your request. Please try again in a moment." };
   }
-
-  // The order is saved from here on. If Stripe is slow or down, the customer
-  // still lands on their order page, which has its own Pay button, rather than
-  // being told to start over and ending up with two orders.
-  if (order.amountCents !== null && paymentsConfigured()) {
-    try {
-      const pay = await checkoutUrl(order, await getBaseUrl());
-      if ("url" in pay) return { ok: true, url: pay.url };
-    } catch (error) {
-      console.error("submitOrder could not start checkout", error);
-      return { ok: true, url: `/order/${order.id}?pay=error` };
-    }
-  }
-  // Quote requests, or payment could not start: the order page explains and offers a Pay button.
-  return { ok: true, url: `/order/${order.id}` };
 }
 
 export async function payOrder(formData: FormData): Promise<void> {
@@ -142,7 +130,7 @@ export async function adminSetQuote(formData: FormData): Promise<void> {
   try {
     // An older payment link for the old price must not stay payable.
     if ((await retireOpenSession(id)) === "paid") message = "The customer already paid, so the price was not changed.";
-    else if (await setQuote(id, cents, text(formData.get("note"), 1000))) message = "Quote sent to the order page.";
+    else if (await setQuote(id, cents, text(formData.get("note"), 1000))) message = "Final price is now on the customer order page. Let them know it is ready.";
     else message = "Could not set that price. It must be from $5 to $2,000 and the order must be unpaid.";
   } catch (error) {
     console.error("adminSetQuote failed", error);

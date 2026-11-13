@@ -1,8 +1,10 @@
 # Craftline
 
-A made to order services site. A visitor picks a service, answers a few questions
-while the price builds live, pays through Stripe Checkout, and follows the order on
-a private link. The owner works the orders from `/admin`.
+A made to order services site. A visitor picks a service and answers a few questions
+about how complex the job is and the level of finish they want. No prices are shown
+until the end, where they get an estimated price range and send the request. The
+owner confirms the final price from `/admin`, the customer pays it through Stripe
+Checkout, and follows the order on a private link.
 
 Next.js, TypeScript, Tailwind CSS, Postgres, Stripe.
 
@@ -37,34 +39,52 @@ Stripe webhook: in the Stripe dashboard add an endpoint for
 `checkout.session.completed` and `checkout.session.async_payment_succeeded`, then
 copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
 
-## Changing services and prices
+## How an order moves
+
+1. Customer answers the questions and sees an estimate range. Nothing is charged.
+2. The request lands in `/admin` with that estimate. You set the final price
+   (the form starts on the middle of the estimate) and can add a note.
+3. The customer opens their order link, sees the final price and pays on Stripe.
+4. You move the order through Received, In progress, Draft ready and Done, and
+   add a delivery link.
+
+The site sends no emails yet. Each order in `/admin` has an "Email the customer
+their link" button that opens your own mail app with the link filled in.
+
+## Changing services and the estimate
 
 Everything sold lives in `src/lib/services.ts`: the services, their questions, and
-every price, in cents. Add or edit entries there. `npm test` checks that each
-"from" price really is the cheapest possible order.
+the amounts behind the estimate, in cents. Customers never see those amounts, only
+the range built from them. Shared `COMPLEXITY` and `LEVEL` questions multiply the
+basis. The range is 15 percent either side of the calculated amount, rounded to
+5 dollars (`estimateRange` in `src/lib/pricing.ts`).
 
-Site name, currency and the price limits are in `src/lib/site.ts`. Orders above
-`MAX_ORDER_CENTS` ($2,000) are never charged automatically, they become quote
-requests that the owner prices by hand.
+Site name, currency and the price limits are in `src/lib/site.ts`. A request whose
+basis is above `MAX_ORDER_CENTS` ($2,000) gets no automatic estimate, and no final
+price can be set outside $5 to $2,000.
 
 ## How money is kept safe
 
-- The price is calculated on the server from the answers, using the same function
-  that drives the live price in the browser. A price sent by the browser is never used.
+- Nothing is charged when a request is sent. A request cannot be paid until the
+  owner has set a final price.
+- The estimate is calculated on the server from the answers, with the same function
+  the browser uses to show it. A number sent by the browser is never used.
 - An order becomes paid only when Stripe confirms it: through the signed webhook,
   or by looking the Checkout Session up with the secret key when the customer returns.
 - Recording a payment is idempotent. A second payment for the same order, a payment
-  after cancellation, or an amount that differs from the listed price is flagged on
+  after cancellation, or an amount that differs from the final price is flagged on
   the admin page instead of being dropped.
-- An open payment link is reused, and old links are expired when a quote changes,
-  so a customer is not sent to pay twice.
+- An open payment link is reused, and old links are expired when the price changes,
+  so a customer is not sent to pay twice or at an old price.
 - Card details never touch this site. Refunds are done in the Stripe dashboard.
 
 ## What is not built yet
 
 Customer accounts, messages and file uploads inside an order, email notifications,
 promo codes, referrals, reviews, and AI follow up questions. Customers reach their
-order through the private link shown after ordering, so they need to keep it.
+order through the private link shown after sending a request, so they need to keep
+it. Because the final price now arrives later, automatic emails are the most
+useful thing to add next.
 
 The wording on `/policies` is a draft. Read it and change it to match how you
 really work before taking real orders.
@@ -72,8 +92,8 @@ really work before taking real orders.
 ## Layout
 
 ```
-src/lib/services.ts   what is sold, questions and prices
-src/lib/pricing.ts    answer validation and the price formula
+src/lib/services.ts   what is sold, the questions and the estimate basis
+src/lib/pricing.ts    answer validation and the estimate formula
 src/lib/orders.ts     order storage and status rules
 src/lib/payments.ts   everything that talks to Stripe
 src/lib/admin-auth.ts owner login

@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_alert         text
 );
 CREATE INDEX IF NOT EXISTS orders_created_at ON orders (created_at DESC);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimate_low_cents integer;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS estimate_high_cents integer;
 `;
 
 interface Holder {

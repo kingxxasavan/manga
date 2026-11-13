@@ -26,8 +26,8 @@ export default function OrderPage(props: Props) {
 
 function Headline({ order }: { order: Order }) {
   const map: Record<Order["status"], [string, string]> = {
-    quote_requested: ["We got your request", "We are working out a price. It will appear on this page, so keep this link and check back."],
-    quote_ready: ["Your quote is ready", "Happy with the price? Pay below and we get started."],
+    quote_requested: ["We got your request", "We are checking the details and confirming your final price. It will appear on this page, so keep this link and check back."],
+    quote_ready: ["Your price is ready", "This is your confirmed price. Happy with it? Pay below and we get started."],
     awaiting_payment: ["Almost there", "Your order is saved. Pay below and we get started."],
     received: ["Payment received, thank you", "Your order is in the queue. This page updates as we work on it."],
     in_progress: ["We are working on it", "Your order is being made right now."],
@@ -106,12 +106,31 @@ async function OrderView({ params, searchParams }: Props) {
         </a>
       )}
 
+      {order.status === "quote_requested" && (
+        <section className="mt-8 rounded-3xl border border-line bg-surface p-5 shadow-card sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-widest text-muted">{order.estimate ? "Your estimated price" : "Your price"}</p>
+          {order.estimate ? (
+            <p className="mt-2 font-display text-4xl font-extrabold tabular-nums">
+              {formatMoney(order.estimate.low)} <span className="text-xl font-bold text-muted">to</span> {formatMoney(order.estimate.high)}
+            </p>
+          ) : (
+            <p className="mt-2 font-display text-3xl font-extrabold">Being worked out</p>
+          )}
+          <p className="mt-3 flex items-center gap-2.5 text-sm font-semibold text-muted">
+            <span className="live-dot shrink-0" /> We are confirming your final price. Nothing to pay yet.
+          </p>
+        </section>
+      )}
+
       {payable && (
         <section className="mt-8 rounded-3xl border border-accent/50 bg-accent-soft p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <p>
-              <span className="block text-xs font-bold uppercase tracking-widest text-muted">Total</span>
+              <span className="block text-xs font-bold uppercase tracking-widest text-muted">Final price</span>
               <span className="font-display text-4xl font-extrabold tabular-nums">{formatMoney(order.amountCents!)}</span>
+              {order.estimate && (
+                <span className="mt-1 block text-sm text-muted">Your estimate was {formatMoney(order.estimate.low)} to {formatMoney(order.estimate.high)}</span>
+              )}
             </p>
             {paymentsConfigured() ? (
               <form action={payOrder}>
@@ -129,7 +148,7 @@ async function OrderView({ params, searchParams }: Props) {
       )}
 
       <section className="mt-8">
-        <h2 className="text-xl font-bold">What you ordered</h2>
+        <h2 className="text-xl font-bold">What you asked for</h2>
         <dl className="mt-3 divide-y divide-line rounded-3xl border border-line bg-surface">
           {order.lines.map((line) => (
             <div key={line.label} className="flex items-start gap-4 px-5 py-3.5">
@@ -137,16 +156,11 @@ async function OrderView({ params, searchParams }: Props) {
                 <dt className="text-xs font-semibold text-muted">{line.label}</dt>
                 <dd className="mt-0.5 whitespace-pre-wrap break-words font-medium">{line.value}</dd>
               </div>
-              {(line.amount > 0 || line.multiplier) && (
-                <span className="shrink-0 text-sm font-bold text-muted">
-                  {line.multiplier ? `+${Math.round((line.multiplier - 1) * 100)}%` : formatMoney(line.amount)}
-                </span>
-              )}
             </div>
           ))}
           {order.amountCents !== null && (
             <div className="flex items-center justify-between gap-4 px-5 py-4">
-              <dt className="font-bold">{order.paidAt ? "Paid" : "Total"}</dt>
+              <dt className="font-bold">{order.paidAt ? "Paid" : "Final price"}</dt>
               <dd className="font-display text-2xl font-extrabold tabular-nums">{formatMoney(order.amountCents)}</dd>
             </div>
           )}
@@ -154,7 +168,7 @@ async function OrderView({ params, searchParams }: Props) {
       </section>
 
       <p className="mt-6 text-sm text-muted">
-        Ordered {formatDateTime(order.createdAt)}{order.paidAt ? ` · paid ${formatDateTime(order.paidAt)}` : ""}.
+        Requested {formatDateTime(order.createdAt)}{order.paidAt ? ` · paid ${formatDateTime(order.paidAt)}` : ""}.
         {" "}This page is your private order link. Bookmark it, and do not share it publicly.
         {SUPPORT_EMAIL && <> Need help? <a className="font-semibold text-accent hover:underline" href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>.</>}
       </p>

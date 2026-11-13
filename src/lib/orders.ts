@@ -1,7 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { query } from "./db";
-import type { Answers, Line } from "./pricing";
+import type { Answers, Estimate, Line } from "./pricing";
 import { MAX_ORDER_CENTS, MIN_ORDER_CENTS } from "./site";
 
 export const STATUSES = [
@@ -14,8 +14,8 @@ export const WORK_STATUSES = ["received", "in_progress", "draft_ready", "done"] 
 export type WorkStatus = (typeof WORK_STATUSES)[number];
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
-  quote_requested: "Waiting for your quote",
-  quote_ready: "Quote ready",
+  quote_requested: "Confirming your price",
+  quote_ready: "Price ready",
   awaiting_payment: "Waiting for payment",
   received: "Received",
   in_progress: "In progress",
@@ -34,6 +34,9 @@ export interface Order {
   name: string;
   answers: Answers;
   lines: Line[];
+  /** The range the customer was shown after the questions, if one could be given */
+  estimate: Estimate | null;
+  /** The final price, set by the owner. null until then. */
   amountCents: number | null;
   status: OrderStatus;
   paidAt: string | null;
@@ -58,6 +61,10 @@ function toOrder(row: Record<string, unknown>): Order {
     name: row.name as string,
     answers: json<Answers>(row.answers),
     lines: json<Line[]>(row.lines),
+    estimate:
+      typeof row.estimate_low_cents === "number" && typeof row.estimate_high_cents === "number"
+        ? { low: row.estimate_low_cents, high: row.estimate_high_cents }
+        : null,
     amountCents: (row.amount_cents as number | null) ?? null,
     status: row.status as OrderStatus,
     paidAt: row.paid_at ? iso(row.paid_at) : null,
@@ -85,19 +92,26 @@ export interface NewOrder {
   name: string;
   answers: Answers;
   lines: Line[];
-  /** null when the owner still has to set a price */
+  /** The range shown to the customer, or null when none could be given */
+  estimate?: Estimate | null;
+  /** null when the owner still has to set the final price (the normal case) */
   amountCents: number | null;
 }
 
 export async function createOrder(input: NewOrder): Promise<Order> {
   if (input.amountCents !== null && !isPayableAmount(input.amountCents)) throw new Error("Amount is outside the allowed range");
+  const estimate = input.estimate ?? null;
+  if (estimate && !(isPayableAmount(estimate.low) && isPayableAmount(estimate.high) && estimate.low < estimate.high)) {
+    throw new Error("Estimate is outside the allowed range");
+  }
   const rows = await query(
-    `INSERT INTO orders (id, service_id, service_name, email, name, answers, lines, amount_cents, status)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9) RETURNING *`,
+    `INSERT INTO orders (id, service_id, service_name, email, name, answers, lines, amount_cents, status, estimate_low_cents, estimate_high_cents)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11) RETURNING *`,
     [
       newOrderId(), input.serviceId, input.serviceName, input.email, input.name,
       JSON.stringify(input.answers), JSON.stringify(input.lines), input.amountCents,
       input.amountCents === null ? "quote_requested" : "awaiting_payment",
+      estimate?.low ?? null, estimate?.high ?? null,
     ],
   );
   return toOrder(rows[0]);
@@ -158,7 +172,7 @@ export async function markPaid(id: string, payment: Payment): Promise<"marked" |
   return "duplicate";
 }
 
-/** Owner sets or changes the price of a request that has not been paid. */
+/** Owner confirms or changes the final price of a request that has not been paid. */
 export async function setQuote(id: string, amountCents: number, note: string | null): Promise<boolean> {
   if (!isPayableAmount(amountCents)) return false;
   const rows = await query(

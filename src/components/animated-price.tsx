@@ -3,17 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/lib/money";
 
-const DURATION = 420;
+const DURATION = 700;
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 4);
 
 /**
- * A price that counts to its new value instead of jumping.
- * Purpose: makes it obvious that an answer just changed the price, and by how much.
+ * A price that counts to its value instead of just appearing.
+ * Purpose: gives the estimate a moment of arrival after the questions. Seen once per request.
  * `value` is in cents. People who prefer reduced motion get the plain number.
  */
-export function AnimatedPrice({ value, className = "" }: { value: number; className?: string }) {
-  const [shown, setShown] = useState(value);
-  const from = useRef(value);
+export function AnimatedPrice({ value, from: start, className = "" }: { value: number; from?: number; className?: string }) {
+  // `from` makes the number count up the first time it appears (used for the estimate reveal).
+  const [shown, setShown] = useState(start ?? value);
+  const from = useRef(start ?? value);
 
   useEffect(() => {
     const start = from.current;

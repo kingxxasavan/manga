@@ -1,4 +1,4 @@
-import { MAX_ORDER_CENTS } from "./site";
+import { MAX_ORDER_CENTS, MIN_ORDER_CENTS } from "./site";
 import type { Question, Service } from "./services";
 
 export type AnswerValue = string | string[] | number;
@@ -13,14 +13,34 @@ export interface Line {
   multiplier?: number;
 }
 
+export interface Estimate {
+  /** cents */
+  low: number;
+  /** cents */
+  high: number;
+}
+
 export interface Quote {
   lines: Line[];
-  /** Final price in cents. 0 for quote only services. */
+  /** The middle of the estimate, in cents. 0 for quote only services. */
   total: number;
-  /** true when the owner has to price this by hand */
-  needsManualQuote: boolean;
-  /** why, when needsManualQuote is true */
+  /** The range shown to the customer, or null when no estimate can be given. */
+  estimate: Estimate | null;
+  /** why there is no estimate, when there is none */
   reason?: "quote_only" | "over_cap";
+}
+
+const STEP = 5_00; // estimates are rounded to whole 5 dollar steps
+const SPREAD = 0.15;
+
+/**
+ * Turns a calculated amount into the range shown to the customer: 15 percent
+ * either side, rounded outward to 5 dollars, and kept inside the allowed prices.
+ */
+export function estimateRange(total: number): Estimate {
+  const low = Math.max(MIN_ORDER_CENTS, Math.floor((total * (1 - SPREAD)) / STEP) * STEP);
+  const high = Math.min(MAX_ORDER_CENTS, Math.max(low + STEP, Math.ceil((total * (1 + SPREAD)) / STEP) * STEP));
+  return { low: Math.min(low, high - STEP), high };
 }
 
 export type QuoteResult =
@@ -76,11 +96,12 @@ export function checkAnswer(q: Question, raw: unknown): { value: AnswerValue } |
 }
 
 /**
- * Validates every answer and works out the price. This one function is used
- * for the live price in the browser AND for the amount charged on the server,
- * and the server never accepts a price from the browser.
+ * Validates every answer and works out the estimate. The same function runs
+ * in the browser (to show the estimate) and on the server (to store it), and
+ * the server never accepts a number from the browser.
  *
- * Price = (sum of everything picked) x (every multiplier), rounded to a whole dollar.
+ * Basis = (sum of everything picked) x (every multiplier). The estimate is a
+ * range around that. It is never charged: the owner confirms the final price.
  */
 export function quote(service: Service, input: Record<string, unknown>): QuoteResult {
   const errors: Record<string, string> = {};
@@ -122,39 +143,13 @@ export function quote(service: Service, input: Record<string, unknown>): QuoteRe
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
   if (service.quoteOnly) {
-    return { ok: true, answers, quote: { lines, total: 0, needsManualQuote: true, reason: "quote_only" } };
+    return { ok: true, answers, quote: { lines, total: 0, estimate: null, reason: "quote_only" } };
   }
   const total = Math.round((sum * factor) / 100) * 100;
   if (total > MAX_ORDER_CENTS) {
-    return { ok: true, answers, quote: { lines, total, needsManualQuote: true, reason: "over_cap" } };
+    return { ok: true, answers, quote: { lines, total, estimate: null, reason: "over_cap" } };
   }
-  return { ok: true, answers, quote: { lines, total, needsManualQuote: false } };
-}
-
-/** Price so far while the form is half filled: unanswered questions count as nothing. */
-export function estimate(service: Service, input: Record<string, unknown>): number {
-  let sum = 0;
-  let factor = 1;
-  for (const q of service.questions) {
-    const checked = checkAnswer(q, input[q.id]);
-    if ("error" in checked) continue;
-    const value = checked.value;
-    if (q.kind === "choice") {
-      const option = q.options.find((o) => o.id === value)!;
-      sum += option.price ?? 0;
-      factor *= option.multiplier ?? 1;
-    } else if (q.kind === "multi") {
-      for (const o of q.options) {
-        if ((value as string[]).includes(o.id)) {
-          sum += o.price ?? 0;
-          factor *= o.multiplier ?? 1;
-        }
-      }
-    } else if (q.kind === "number") {
-      sum += Math.max(0, (value as number) - q.included) * q.unitPrice;
-    }
-  }
-  return Math.round((sum * factor) / 100) * 100;
+  return { ok: true, answers, quote: { lines, total, estimate: estimateRange(total) } };
 }
 
 export function checkEmail(raw: unknown): string | null {
