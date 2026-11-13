@@ -42,6 +42,7 @@ copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
 ## How an order moves
 
 1. Customer answers the questions and sees an estimate range. Nothing is charged.
+   (The flat price Surprise me option is the exception: it is paid right away.)
 2. The request lands in `/admin` with that estimate. You set the final price
    (the form starts on the middle of the estimate) and can add a note.
 3. The customer opens their order link, sees the final price and pays on Stripe.
@@ -59,11 +60,45 @@ the range built from them. Shared `COMPLEXITY` and `LEVEL` questions multiply th
 basis. The range is 15 percent either side of the calculated amount, rounded to
 5 dollars (`estimateRange` in `src/lib/pricing.ts`).
 
-The amounts follow one rule: every normal request estimates at or under $500.
-Only a full app or game, a "very complex" software job, or a bulk quantity (like
-20 pages or 30 logos) can go above. `npm test` fails if a change breaks that rule,
-and `SHOW_SPREAD=1 npx vitest run tests/estimate-spread.test.ts --disable-console-intercept`
+The amounts follow the launch pricing rules, and `npm test` fails if a change
+breaks one of them:
+
+1. every normal request estimates at or under $500
+2. bulk quantities (like 20 pages or 30 logos) and "very complex" jobs stay at or under $800
+3. only a full app or game, or a full book, may go above that
+
+`SHOW_SPREAD=1 npx vitest run tests/estimate-spread.test.ts --disable-console-intercept`
 prints the cheapest, middle and dearest estimate per service while you tune.
+
+When the launch period ends, raise the amounts in `src/lib/services.ts`, loosen
+the two limits at the top of `tests/estimate-spread.test.ts` to match, and set
+`LAUNCH_PRICING` to `false` in `src/lib/site.ts` to drop the "Launch pricing" labels.
+
+A question can be limited to certain answers with `showIf`, for example the
+citation style question only appears for essays and reports. Hidden questions are
+never asked, checked, stored or counted.
+
+## The website designer
+
+For websites the customer picks a layout, a color set, a text style and an image
+style, and a live preview redraws as they choose. Their choice is saved with the
+order and shown again on their order page and in `/admin`, so you can see exactly
+what to build.
+
+The catalogue is `src/lib/templates.ts`: add a color set or a text style there and
+it appears in the builder. A new layout also needs its drawing added in
+`src/components/site-preview.tsx`. The look never changes the estimate.
+
+The preview is a sketch drawn with shapes, not a real page, and the catalogue is
+hand made. Generating templates with an AI model would be a later addition and
+needs an API key.
+
+## Surprise me
+
+Under "Something else" the customer can pick Surprise me: a flat $15 for something
+random. It is the one fixed price on the site (`fixed` on the option in
+`services.ts`), so it skips the estimate and goes straight to payment. Every other
+request still waits for you to confirm a price.
 
 Site name, currency and the price limits are in `src/lib/site.ts`. A request whose
 basis is above `MAX_ORDER_CENTS` ($2,000) gets no automatic estimate, and no final
@@ -71,8 +106,9 @@ price can be set outside $5 to $2,000.
 
 ## How money is kept safe
 
-- Nothing is charged when a request is sent. A request cannot be paid until the
-  owner has set a final price.
+- Nothing is charged when a request is sent, and a request cannot be paid until the
+  owner has set a final price. The only exception is a flat price option, whose
+  amount comes from the config file and never from the browser.
 - The estimate is calculated on the server from the answers, with the same function
   the browser uses to show it. A number sent by the browser is never used.
 - An order becomes paid only when Stripe confirms it: through the signed webhook,
@@ -99,6 +135,7 @@ really work before taking real orders.
 
 ```
 src/lib/services.ts   what is sold, the questions and the estimate basis
+src/lib/templates.ts  website layouts, color sets, text styles and image styles
 src/lib/pricing.ts    answer validation and the estimate formula
 src/lib/orders.ts     order storage and status rules
 src/lib/payments.ts   everything that talks to Stripe

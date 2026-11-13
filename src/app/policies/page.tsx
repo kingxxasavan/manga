@@ -12,7 +12,9 @@ const SECTIONS = [
   { title: "Changes", body: "Every order includes at least one round of changes. A round is one list of changes sent after you see a draft. Extra rounds can be added when you order." },
   { title: "Refunds", body: "Sending a request is free and you can walk away at any time before paying. After paying, if we have not started your order, you can cancel for a full refund. If we cannot deliver what was ordered, you get a full refund. Once a draft has been delivered, refunds are decided case by case, because the work has already been done for you." },
   { title: "Delivery times", body: "Delivery times shown on the site are estimates, not guarantees. If an order is running late we will say so on your order page." },
-  { title: "What we will not make", body: "We do not take orders for anything illegal, deceptive or harmful, or for legal, medical or financial advice. If an order like that comes in, we cancel it and refund it." },
+  { title: "Surprise me orders", body: "A Surprise me order is a flat price paid up front for something random that we choose and make for you. Because the result is a surprise by design, it is not refunded for being unexpected, but it is refunded if we do not deliver anything. Everything we make for it is original." },
+  { title: "Writing", body: "Essays, reports, books and scripts are written to order for your own use: as drafts, study material, content for your business or your own projects. Do not hand in our writing as your own work for a graded class, exam or any place that forbids it." },
+  { title: "What we will not make", body: "We do not take orders for anything illegal, deceptive or harmful, or for legal, medical or financial advice. We do not copy real brands, games, characters or other people's work. If an order like that comes in, we cancel it and refund it." },
   { title: "Your order link", body: "Your order page link is private and works like a key. Anyone with the link can see that order, so do not share it publicly." },
 ];
 

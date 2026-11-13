@@ -4,44 +4,65 @@
  * Customers never see the numbers in this file. They are the basis for the
  * ESTIMATE shown after the questions: `quote()` in pricing.ts adds them up and
  * turns the result into a range. The owner then confirms the final price by hand.
- * All amounts are in cents. To add a service, add an entry to SERVICES.
+ * The one exception is an option marked `fixed`: that is a flat price, shown and
+ * paid right away. All amounts are in cents.
  *
- * The amounts are tuned to one rule: every normal request estimates at or under
- * 500 dollars. Only a full app or game, a "very complex" software job, or an
- * unusually large quantity can go above. `npm test` enforces that rule, and
- * `SHOW_SPREAD=1 npm test` prints the spread while you tune numbers here.
+ * LAUNCH PRICING. The amounts are tuned to these rules, which `npm test` enforces:
+ *   1. every normal request estimates at or under 500 dollars
+ *   2. bulk quantities and "very complex" jobs stay at or under 800 dollars
+ *   3. only a full app or game, or a full book, may go above that
+ * `SHOW_SPREAD=1 npx vitest run tests/estimate-spread.test.ts --disable-console-intercept`
+ * prints the spread while you tune numbers here.
  */
+import { FONTS, IMAGERY, PALETTES, TEMPLATES } from "./templates";
 
 export interface Option {
   id: string;
   label: string;
   hint?: string;
-  /** Added to the price */
+  /** Added to the estimate basis */
   price?: number;
-  /** Multiplies the whole price, e.g. 1.3 for rush delivery */
+  /** Multiplies the whole basis, e.g. 1.15 for rush delivery */
   multiplier?: number;
+  /** Picking this makes the whole order a flat price, paid right away with no estimate */
+  fixed?: number;
 }
 
 interface QuestionBase {
   id: string;
   label: string;
   help?: string;
+  /** Only ask this when an earlier choice question has one of these answers */
+  showIf?: { id: string; in: string[] };
 }
 
 export type Question =
-  | (QuestionBase & { kind: "choice"; options: Option[] })
+  | (QuestionBase & {
+      kind: "choice";
+      options: Option[];
+      /** Draws the options as a visual picker from the look catalogue instead of plain cards */
+      ui?: "template" | "palette" | "font" | "imagery";
+    })
   | (QuestionBase & { kind: "multi"; options: Option[] })
   | (QuestionBase & {
       kind: "number";
       min: number;
       max: number;
-      /** How many are already covered by the price so far */
+      /** How many are already covered by the basis so far */
       included: number;
-      /** Price for each one above `included` */
+      /** Added for each one above `included` */
       unitPrice: number;
       unit: string;
     })
-  | (QuestionBase & { kind: "text"; placeholder: string; required: boolean; maxLength: number; long?: boolean });
+  | (QuestionBase & {
+      kind: "text";
+      placeholder: string;
+      required: boolean;
+      maxLength: number;
+      /** Shortest accepted answer when required. Defaults to 10. */
+      minLength?: number;
+      long?: boolean;
+    });
 
 export interface Service {
   id: string;
@@ -49,7 +70,7 @@ export interface Service {
   tagline: string;
   icon: "globe" | "pen" | "palette" | "code" | "sparkles";
   delivery: string;
-  /** true: never priced automatically, the owner sets the price by hand */
+  /** true: never estimated automatically, the owner sets the price by hand */
   quoteOnly?: boolean;
   examples: string[];
   questions: Question[];
@@ -83,7 +104,7 @@ const COMPLEXITY_SOFTWARE: Question = {
   ...COMPLEXITY,
   options: [
     ...(COMPLEXITY as Extract<Question, { kind: "choice" }>).options,
-    { id: "huge", label: "Very complex", hint: "A full app, game or system", multiplier: 4 },
+    { id: "huge", label: "Very complex", hint: "A full app, game or system", multiplier: 3.5 },
   ],
 };
 
@@ -111,7 +132,7 @@ const REVISIONS: Question = {
   unit: "round",
 };
 
-const details = (label: string, placeholder: string): Question => ({
+const details = (label: string, placeholder: string, showIf?: Question["showIf"]): Question => ({
   id: "details",
   kind: "text",
   label,
@@ -119,9 +140,10 @@ const details = (label: string, placeholder: string): Question => ({
   required: true,
   maxLength: 2000,
   long: true,
+  showIf,
 });
 
-const LINKS: Question = {
+const links = (showIf?: Question["showIf"]): Question => ({
   id: "links",
   kind: "text",
   label: "Any links or examples you like?",
@@ -130,13 +152,23 @@ const LINKS: Question = {
   required: false,
   maxLength: 600,
   long: true,
-};
+  showIf,
+});
+
+// Writing: which document types each follow up question applies to.
+const LONG_FORM = ["essay", "report", "other"];
+const CITED = ["essay", "report", "book"];
+const FORMATTED = ["essay", "report", "book", "script", "other", "resume", "cover", "both"];
+
+// Something else: the two paths.
+const IDEA = { id: "mode", in: ["idea"] };
+const RANDOM = { id: "mode", in: ["random"] };
 
 export const SERVICES: Service[] = [
   {
     id: "website",
     name: "Website",
-    tagline: "A clean site for you or your business",
+    tagline: "Pick a look, see it live, and we build it",
     icon: "globe",
     delivery: "3 to 7 days",
     examples: ["Landing page", "Portfolio", "Small business site", "Online store"],
@@ -152,15 +184,55 @@ export const SERVICES: Service[] = [
         ],
       },
       {
+        id: "siteName",
+        kind: "text",
+        label: "What is it called?",
+        help: "Your business, brand or project name. It shows up in the preview.",
+        placeholder: "Sunny Side Bakery",
+        required: true,
+        minLength: 2,
+        maxLength: 50,
+      },
+      {
+        id: "template",
+        kind: "choice",
+        ui: "template",
+        label: "Pick a starting layout",
+        help: "This sets the structure. Colors, text and images come next.",
+        options: TEMPLATES.map((t) => ({ id: t.id, label: t.name, hint: t.blurb })),
+      },
+      {
+        id: "palette",
+        kind: "choice",
+        ui: "palette",
+        label: "Choose your colors",
+        options: PALETTES.map((p) => ({ id: p.id, label: p.name })),
+      },
+      {
+        id: "font",
+        kind: "choice",
+        ui: "font",
+        label: "Choose your text style",
+        options: FONTS.map((f) => ({ id: f.id, label: f.name, hint: f.blurb })),
+      },
+      {
+        id: "imagery",
+        kind: "choice",
+        ui: "imagery",
+        label: "What kind of images?",
+        options: IMAGERY.map((i) => ({ id: i.id, label: i.name, hint: i.blurb })),
+      },
+      {
         id: "pages",
         kind: "number",
         label: "How many pages?",
-        help: "Count every separate page. One page sites stay at 1.",
-        min: 1,
+        help: "Count every separate page.",
+        min: 2,
         max: 20,
         included: 3,
         unitPrice: 6_00,
         unit: "page",
+        showIf: { id: "type", in: ["multi", "store"] },
       },
       {
         id: "features",
@@ -176,8 +248,8 @@ export const SERVICES: Service[] = [
         ],
       },
       LEVEL,
-      details("Tell us about it", "What is the site for, who is it for, and what should visitors do on it?"),
-      LINKS,
+      details("Now tell us about it, like you would ask an AI", "What is the site for, who is it for, what should be on it, and what should visitors do? The more you say, the closer the first draft."),
+      links(),
       REVISIONS,
       RUSH,
     ],
@@ -185,47 +257,152 @@ export const SERVICES: Service[] = [
   {
     id: "writing",
     name: "Writing",
-    tagline: "Resumes, cover letters and product text",
+    tagline: "Essays, reports, books, scripts, resumes and more",
     icon: "pen",
-    delivery: "1 to 2 days",
-    examples: ["Resume", "Cover letter", "Product descriptions", "About page"],
+    delivery: "1 to 4 days",
+    examples: ["Essay", "Report", "Book", "Script", "Resume", "Product descriptions"],
     questions: [
       {
         id: "type",
         kind: "choice",
         label: "What do you need written?",
         options: [
-          { id: "cover", label: "Cover letter", price: 10_00 },
+          { id: "essay", label: "Essay", price: 12_00 },
+          { id: "report", label: "Report", hint: "Business, research or project report", price: 15_00 },
+          { id: "book", label: "Book", hint: "Fiction, guide or memoir, start to finish", price: 40_00 },
+          { id: "script", label: "Script", hint: "Video, film, podcast or stage", price: 15_00 },
           { id: "resume", label: "Resume", price: 15_00 },
+          { id: "cover", label: "Cover letter", price: 10_00 },
           { id: "both", label: "Resume and cover letter", price: 22_00 },
           { id: "product", label: "Product descriptions", price: 12_00 },
-          { id: "other", label: "Something else", hint: "Up to 500 words", price: 12_00 },
+          { id: "other", label: "Something else", price: 12_00 },
         ],
+      },
+      {
+        id: "pages",
+        kind: "number",
+        label: "About how many pages?",
+        help: "One page is roughly 300 words.",
+        min: 1,
+        max: 40,
+        included: 3,
+        unitPrice: 1_50,
+        unit: "page",
+        showIf: { id: "type", in: LONG_FORM },
+      },
+      {
+        id: "bookPages",
+        kind: "number",
+        label: "About how many pages is the book?",
+        help: "A short guide is around 30 pages. A novel is 200 or more.",
+        min: 10,
+        max: 300,
+        included: 20,
+        unitPrice: 1_00,
+        unit: "page",
+        showIf: { id: "type", in: ["book"] },
+      },
+      {
+        id: "minutes",
+        kind: "number",
+        label: "How long should it run, in minutes?",
+        help: "One minute of script is about one page.",
+        min: 1,
+        max: 120,
+        included: 3,
+        unitPrice: 1_50,
+        unit: "minute",
+        showIf: { id: "type", in: ["script"] },
+      },
+      {
+        id: "scriptFor",
+        kind: "choice",
+        label: "What is the script for?",
+        options: [
+          { id: "video", label: "Online video", hint: "YouTube, TikTok, Reels" },
+          { id: "film", label: "Short film" },
+          { id: "podcast", label: "Podcast" },
+          { id: "ad", label: "Ad or promo" },
+          { id: "stage", label: "Stage or live event" },
+        ],
+        showIf: { id: "type", in: ["script"] },
       },
       {
         id: "items",
         kind: "number",
-        label: "How many items?",
-        help: "For product descriptions this is the number of products. For everything else leave it at 5.",
-        min: 5,
+        label: "How many products?",
+        min: 1,
         max: 100,
         included: 5,
-        unitPrice: 2_00,
-        unit: "item",
+        unitPrice: 1_50,
+        unit: "product",
+        showIf: { id: "type", in: ["product"] },
       },
-      COMPLEXITY,
-      LEVEL,
-      details("Give us the details", "Paste your experience, the job you want, or the products. The more you give, the better it reads."),
+      {
+        id: "sources",
+        kind: "text",
+        label: "Any specific sources we should use?",
+        help: "Optional. Paste links, book titles or articles. Leave it empty and we find our own.",
+        placeholder: "Links, titles, authors",
+        required: false,
+        maxLength: 1500,
+        long: true,
+        showIf: { id: "type", in: CITED },
+      },
+      {
+        id: "citation",
+        kind: "choice",
+        label: "Which citation style?",
+        options: [
+          { id: "none", label: "No citations" },
+          { id: "apa", label: "APA" },
+          { id: "mla", label: "MLA" },
+          { id: "chicago", label: "Chicago" },
+          { id: "harvard", label: "Harvard" },
+        ],
+        showIf: { id: "type", in: ["essay", "report"] },
+      },
       {
         id: "tone",
         kind: "choice",
-        label: "What tone?",
+        label: "What writing style?",
         options: [
           { id: "professional", label: "Professional" },
-          { id: "friendly", label: "Friendly" },
+          { id: "academic", label: "Academic", hint: "Formal and precise" },
+          { id: "friendly", label: "Friendly", hint: "Warm and simple" },
           { id: "bold", label: "Bold and confident" },
+          { id: "story", label: "Storytelling", hint: "Vivid, pulls the reader in" },
+          { id: "funny", label: "Funny" },
         ],
       },
+      {
+        id: "font",
+        kind: "choice",
+        label: "Which font?",
+        options: [
+          { id: "times", label: "Times New Roman" },
+          { id: "arial", label: "Arial" },
+          { id: "calibri", label: "Calibri" },
+          { id: "georgia", label: "Georgia" },
+          { id: "any", label: "You pick for me" },
+        ],
+        showIf: { id: "type", in: FORMATTED },
+      },
+      {
+        id: "fontSize",
+        kind: "choice",
+        label: "What text size?",
+        options: [
+          { id: "12", label: "12 point", hint: "The usual choice" },
+          { id: "10", label: "10 point" },
+          { id: "11", label: "11 point" },
+          { id: "14", label: "14 point" },
+        ],
+        showIf: { id: "type", in: FORMATTED },
+      },
+      COMPLEXITY,
+      LEVEL,
+      details("Give us the details", "The topic, the point you want to make, who will read it, and anything it must include. For a resume, paste your experience."),
       REVISIONS,
       RUSH,
     ],
@@ -256,13 +433,13 @@ export const SERVICES: Service[] = [
         min: 1,
         max: 30,
         included: 1,
-        unitPrice: 6_00,
+        unitPrice: 5_00,
         unit: "extra",
       },
       COMPLEXITY,
       LEVEL,
       details("Describe what you want", "Name, style, colors, and the feeling it should give."),
-      LINKS,
+      links(),
       REVISIONS,
       RUSH,
     ],
@@ -306,13 +483,27 @@ export const SERVICES: Service[] = [
   {
     id: "custom",
     name: "Something else",
-    tagline: "Describe any idea and we will tell you what it takes",
+    tagline: "Bring any idea, or let us surprise you",
     icon: "sparkles",
     delivery: "Depends on the job",
     quoteOnly: true,
-    examples: ["A slide deck", "A study guide", "A custom calculator", "Anything you can describe"],
+    examples: ["A slide deck", "A study guide", "A custom calculator", "Surprise me"],
     questions: [
-      details("What do you want built?", "Describe it like you would to a friend. What is it, who is it for, what does done look like?"),
+      {
+        id: "mode",
+        kind: "choice",
+        label: "What are we making?",
+        options: [
+          { id: "idea", label: "I have an idea", hint: "Describe it and we tell you what it takes" },
+          {
+            id: "random",
+            label: "Surprise me",
+            hint: "Something random made just for you. Could be a cursed image, could be a gloriously bad little game. Flat $15.",
+            fixed: 15_00,
+          },
+        ],
+      },
+      details("What do you want built?", "Describe it like you would to a friend. What is it, who is it for, what does done look like?", IDEA),
       {
         id: "budget",
         kind: "choice",
@@ -325,6 +516,7 @@ export const SERVICES: Service[] = [
           { id: "800plus", label: "$800 to $2,000" },
           { id: "unsure", label: "Not sure yet" },
         ],
+        showIf: IDEA,
       },
       {
         id: "deadline",
@@ -335,8 +527,45 @@ export const SERVICES: Service[] = [
           { id: "week", label: "Within a week" },
           { id: "days", label: "In a few days" },
         ],
+        showIf: IDEA,
       },
-      LINKS,
+      links(IDEA),
+      {
+        id: "vibe",
+        kind: "choice",
+        label: "Pick a vibe",
+        options: [
+          { id: "funny", label: "Funny" },
+          { id: "cursed", label: "Cursed", hint: "Weird in a way you cannot unsee" },
+          { id: "wholesome", label: "Wholesome" },
+          { id: "chaos", label: "Pure chaos", hint: "Maximum brain rot" },
+        ],
+        showIf: RANDOM,
+      },
+      {
+        id: "form",
+        kind: "choice",
+        label: "What should it be?",
+        options: [
+          { id: "any", label: "You decide", hint: "The full gamble" },
+          { id: "image", label: "A weird image" },
+          { id: "game", label: "A tiny, terrible game" },
+          { id: "story", label: "A short story" },
+          { id: "song", label: "A song or poem" },
+        ],
+        showIf: RANDOM,
+      },
+      {
+        id: "avoid",
+        kind: "text",
+        label: "Anything we should stay away from?",
+        help: "Optional. Topics, words or themes you do not want.",
+        placeholder: "Spiders. Absolutely no spiders.",
+        required: false,
+        maxLength: 300,
+        long: true,
+        showIf: RANDOM,
+      },
     ],
   },
 ];

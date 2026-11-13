@@ -3,12 +3,16 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { submitOrder } from "@/app/actions";
-import { checkAnswer, checkEmail, defaultAnswer, quote, type AnswerValue } from "@/lib/pricing";
-import type { Option, Question, Service } from "@/lib/services";
 import { formatMoney } from "@/lib/money";
-import { MAX_ORDER_CENTS } from "@/lib/site";
+import { checkAnswer, checkEmail, defaultAnswer, quote, visibleQuestions, type AnswerValue } from "@/lib/pricing";
+import type { Option, Question, Service } from "@/lib/services";
+import { LAUNCH_PRICING, MAX_ORDER_CENTS } from "@/lib/site";
+import { FONTS, PALETTES, resolveLook, TEMPLATES, type Look } from "@/lib/templates";
 import { AnimatedPrice } from "./animated-price";
-import { ArrowLeft, ArrowRight, Check, Minus, Plus } from "./icons";
+import { ArrowLeft, ArrowRight, Check, Lock, Minus, Plus } from "./icons";
+import { SitePreview } from "./site-preview";
+
+type ChoiceQuestion = Extract<Question, { kind: "choice" }>;
 
 function OptionCard({ option, selected, type, name, onPick }: {
   option: Option; selected: boolean; type: "radio" | "checkbox"; name: string; onPick: () => void;
@@ -23,11 +27,96 @@ function OptionCard({ option, selected, type, name, onPick }: {
         <span className="block font-semibold">{option.label}</span>
         {option.hint && <span className="block text-sm text-muted">{option.hint}</span>}
       </span>
+      {option.fixed !== undefined && <span className="shrink-0 rounded-full bg-accent px-3 py-1 text-sm font-bold text-accent-ink">{formatMoney(option.fixed)}</span>}
     </label>
   );
 }
 
-function QuestionInput({ question, value, onChange }: { question: Question; value: AnswerValue; onChange: (value: AnswerValue) => void }) {
+/** A tile in one of the look pickers: a visual on top, the name below, a tick when chosen. */
+function LookTile({ name, selected, onPick, label, hint, badge, children }: {
+  name: string; selected: boolean; onPick: () => void; label: string; hint?: string; badge?: string; children: React.ReactNode;
+}) {
+  return (
+    <label className={`relative block cursor-pointer rounded-2xl border p-3 transition-[border-color,background-color,transform,box-shadow] duration-200 ease-out-strong active:scale-[0.985] ${selected ? "border-accent bg-accent-soft shadow-card" : "border-line bg-surface hover:border-accent/50"}`}>
+      <input type="radio" name={name} checked={selected} onChange={onPick} className="peer sr-only" />
+      <span className="pointer-events-none absolute inset-0 rounded-2xl peer-focus-visible:ring-2 peer-focus-visible:ring-accent" />
+      {children}
+      <span className="mt-3 flex items-start gap-2">
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold leading-tight">{label}</span>
+          {hint && <span className="mt-0.5 block text-sm leading-snug text-muted">{hint}</span>}
+        </span>
+        {badge && !selected && <span className="shrink-0 rounded-full bg-good/15 px-2 py-0.5 text-[11px] font-bold text-good">{badge}</span>}
+        {selected && <span className="pop grid size-6 shrink-0 place-items-center rounded-full bg-accent text-accent-ink"><Check width={14} height={14} strokeWidth={3} /></span>}
+      </span>
+    </label>
+  );
+}
+
+function LookPicker({ question, value, onChange, look, siteName, siteType }: {
+  question: ChoiceQuestion; value: string; onChange: (value: string) => void; look: Look; siteName: string; siteType: string;
+}) {
+  const tile = (id: string) => ({ name: question.id, selected: value === id, onPick: () => onChange(id) });
+
+  if (question.ui === "template") {
+    return (
+      <div role="radiogroup" aria-label={question.label} className="grid gap-3 sm:grid-cols-2">
+        {TEMPLATES.map((t) => (
+          <LookTile key={t.id} {...tile(t.id)} label={t.name} hint={t.blurb} badge={t.goodFor.includes(siteType) ? "Good match" : undefined}>
+            <SitePreview look={{ ...look, template: t }} name={siteName} />
+          </LookTile>
+        ))}
+      </div>
+    );
+  }
+  if (question.ui === "palette") {
+    return (
+      <div role="radiogroup" aria-label={question.label} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {PALETTES.map((p) => (
+          <LookTile key={p.id} {...tile(p.id)} label={p.name}>
+            <span className="flex h-16 overflow-hidden rounded-xl border border-line" style={{ background: p.bg }}>
+              <span className="m-auto flex gap-1.5">
+                {[p.accent, p.text, p.surface, p.muted].map((color, i) => (
+                  <span key={i} className="size-5 rounded-full ring-1 ring-black/10" style={{ background: color }} />
+                ))}
+              </span>
+            </span>
+          </LookTile>
+        ))}
+      </div>
+    );
+  }
+  if (question.ui === "font") {
+    return (
+      <div role="radiogroup" aria-label={question.label} className="grid gap-3 sm:grid-cols-2">
+        {FONTS.map((f) => (
+          <LookTile key={f.id} {...tile(f.id)} label={f.name} hint={f.blurb}>
+            <span className="block overflow-hidden rounded-xl border border-line bg-bg px-4 py-3">
+              <span className="block truncate text-3xl leading-tight" style={{ fontFamily: f.heading, fontWeight: f.headingWeight, letterSpacing: `${f.tracking}em` }}>{siteName || "Your headline"}</span>
+              <span className="mt-1 block truncate text-sm text-muted" style={{ fontFamily: f.body }}>The quick brown fox jumps over the lazy dog</span>
+            </span>
+          </LookTile>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div role="radiogroup" aria-label={question.label} className="grid gap-3 sm:grid-cols-2">
+      {question.options.map((o) => (
+        <LookTile key={o.id} {...tile(o.id)} label={o.label} hint={o.hint}>
+          <SitePreview look={{ ...look, imagery: { id: o.id, name: o.label, blurb: o.hint ?? "" } }} name={siteName} />
+        </LookTile>
+      ))}
+    </div>
+  );
+}
+
+function QuestionInput({ question, value, onChange, look, siteName, siteType }: {
+  question: Question; value: AnswerValue; onChange: (value: AnswerValue) => void; look: Look; siteName: string; siteType: string;
+}) {
+  if (question.kind === "choice" && question.ui) {
+    return <LookPicker question={question} value={value as string} onChange={onChange} look={look} siteName={siteName} siteType={siteType} />;
+  }
   if (question.kind === "choice") {
     return (
       <div role="radiogroup" aria-label={question.label} className="grid gap-3">
@@ -92,9 +181,9 @@ function answerText(question: Question, value: AnswerValue): string {
 }
 
 export function BuildFlow({ service }: { service: Service }) {
-  const questions = service.questions;
+  // Every question gets a starting answer, including ones that may never be asked.
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>(() =>
-    Object.fromEntries(questions.map((q) => [q.id, defaultAnswer(q)])),
+    Object.fromEntries(service.questions.map((q) => [q.id, defaultAnswer(q)])),
   );
   const [step, setStep] = useState(0);
   // How far the customer has got. The brief only lists steps they have passed.
@@ -104,11 +193,23 @@ export function BuildFlow({ service }: { service: Service }) {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
 
-  const last = step === questions.length; // the estimate and "your details" step
+  // Only the questions that apply to the answers so far. Picking a different
+  // kind of work near the start changes which follow ups appear.
+  const questions = useMemo(() => visibleQuestions(service, answers), [service, answers]);
+  const last = step >= questions.length; // the price and "your details" step
   const question = last ? null : questions[step];
+
   const full = useMemo(() => quote(service, answers), [service, answers]);
   const estimate = full.ok ? full.quote.estimate : null;
   const reason = full.ok ? full.quote.reason : undefined;
+  const fixedPrice = full.ok ? full.quote.fixedPrice : undefined;
+  // Known as soon as the flat price option is picked, before the other questions are answered.
+  const isFixed = questions.some((q) => q.kind === "choice" && q.options.find((o) => o.id === answers[q.id])?.fixed !== undefined);
+
+  const hasLook = service.questions.some((q) => q.kind === "choice" && q.ui);
+  const look = useMemo(() => resolveLook(answers), [answers]);
+  const siteName = typeof answers.siteName === "string" ? answers.siteName : "";
+  const siteType = typeof answers.type === "string" ? answers.type : "";
 
   const setAnswer = (id: string, value: AnswerValue) => {
     setAnswers((current) => ({ ...current, [id]: value }));
@@ -151,13 +252,17 @@ export function BuildFlow({ service }: { service: Service }) {
           setError(result.message ?? "Please check the highlighted fields.");
         }
       } catch {
-        setError("We could not reach the server. Check your connection and try again.");
+        setError("We could not reach the server. Nothing was charged. Check your connection and try again.");
       }
     });
   };
 
-  const percent = Math.round((step / questions.length) * 100);
+  const percent = Math.round((Math.min(step, questions.length) / questions.length) * 100);
   const field = "h-12 w-full rounded-2xl border bg-surface px-4 outline-none transition-colors duration-200 focus:border-accent";
+  const lastLabel = isFixed ? "Your price" : "Your estimate";
+  // On a phone the side panel sits below the question, so the steps that restyle
+  // the site without showing previews of their own get one right above the options.
+  const previewAbove = hasLook && question?.kind === "choice" && (question.ui === "palette" || question.ui === "font");
 
   return (
     <div className="pt-8">
@@ -166,29 +271,40 @@ export function BuildFlow({ service }: { service: Service }) {
       </Link>
       <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
         <h1 className="text-3xl font-extrabold sm:text-4xl">{service.name}</h1>
-        <p className="text-sm font-semibold text-muted">{last ? "Your estimate" : `Question ${step + 1} of ${questions.length}`}</p>
+        <p className="text-sm font-semibold text-muted">{last ? lastLabel : `Question ${step + 1} of ${questions.length}`}</p>
       </div>
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuenow={percent} aria-valuemin={0} aria-valuemax={100} aria-label="Progress">
         <div className="h-full w-full origin-left rounded-full bg-accent transition-transform duration-500 ease-out-strong" style={{ transform: `scaleX(${Math.max(percent, 4) / 100})` }} />
       </div>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_20rem]">
-        <div key={step} className="rise min-w-0">
+      <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_22rem]">
+        <div key={last ? "last" : question!.id} className="rise min-w-0">
           {question ? (
             <>
               <h2 className="text-2xl font-extrabold sm:text-3xl">{question.label}</h2>
               {question.help && <p className="mt-2 text-muted">{question.help}</p>}
+              {previewAbove && <SitePreview look={look} name={siteName} className="mx-auto mt-5 max-w-md lg:hidden" />}
               <div className="mt-6">
-                <QuestionInput question={question} value={answers[question.id]} onChange={(v) => setAnswer(question.id, v)} />
+                <QuestionInput question={question} value={answers[question.id]} onChange={(v) => setAnswer(question.id, v)} look={look} siteName={siteName} siteType={siteType} />
               </div>
             </>
           ) : (
             <>
-              {/* The estimate: the one place a number appears, after every question is answered */}
+              {/* The one place a number appears, after every question is answered */}
               <section className="panel-dark on-dark rounded-3xl p-6 sm:p-8" aria-live="polite">
                 <span className="glow glow-a" />
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">{estimate ? "Your estimated price" : "Your price"}</p>
-                {estimate ? (
+                <p className="flex flex-wrap items-center gap-3 text-xs font-bold uppercase tracking-[0.18em] text-muted">
+                  {fixedPrice !== undefined ? "Flat price" : estimate ? "Your estimated price" : "Your price"}
+                  {LAUNCH_PRICING && estimate && <span className="rounded-full bg-good/20 px-2.5 py-1 tracking-normal text-good normal-case">Launch pricing</span>}
+                </p>
+                {fixedPrice !== undefined ? (
+                  <>
+                    <p className="mt-3 font-display text-6xl font-extrabold leading-none"><AnimatedPrice value={fixedPrice} from={0} /></p>
+                    <p className="mt-4 max-w-xl leading-relaxed text-muted">
+                      One flat price, no estimate needed. Pay now and we get making. What you get is a surprise, and it lands on your order page when it is ready.
+                    </p>
+                  </>
+                ) : estimate ? (
                   <>
                     <p className="mt-3 font-display text-5xl font-extrabold leading-none sm:text-6xl">
                       <AnimatedPrice value={estimate.low} from={0} />
@@ -238,32 +354,48 @@ export function BuildFlow({ service }: { service: Service }) {
 
           <div className="mt-8 flex items-center gap-3">
             {step > 0 && (
-              <button type="button" onClick={() => goTo(step - 1)} disabled={pending} className="btn btn-ghost px-5 py-3">
+              <button type="button" onClick={() => goTo(Math.min(step, questions.length) - 1)} disabled={pending} className="btn btn-ghost px-5 py-3">
                 <ArrowLeft width={18} height={18} /> Back
               </button>
             )}
             {last ? (
               <button type="button" onClick={submit} disabled={pending} className="btn btn-primary flex-1 px-7 py-3.5 disabled:opacity-60 sm:flex-none">
-                {pending ? "Sending" : <>Send my request <ArrowRight width={18} height={18} className="arrow" /></>}
+                {pending ? "One moment" : fixedPrice !== undefined
+                  ? <><Lock width={16} height={16} /> Continue to payment · {formatMoney(fixedPrice)}</>
+                  : <>Send my request <ArrowRight width={18} height={18} className="arrow" /></>}
               </button>
             ) : (
               <button type="button" onClick={next} className="btn btn-primary flex-1 px-7 py-3.5 sm:flex-none">
-                {step === questions.length - 1 ? "See my estimate" : "Next"} <ArrowRight width={18} height={18} className="arrow" />
+                {step === questions.length - 1 ? (isFixed ? "See my price" : "See my estimate") : "Next"} <ArrowRight width={18} height={18} className="arrow" />
               </button>
             )}
           </div>
-          {last && <p className="mt-3 text-sm text-muted">No payment now. By sending you agree to the <Link href="/policies" className="font-semibold underline">refunds and terms</Link>.</p>}
+          {last && (
+            <p className="mt-3 text-sm text-muted">
+              {fixedPrice !== undefined ? "You pay on the secure Stripe page." : "No payment now."} By continuing you agree to the <Link href="/policies" className="font-semibold underline">refunds and terms</Link>.
+            </p>
+          )}
         </div>
 
-        {/* The brief builds up as questions are answered. No prices here. */}
-        <aside>
-          <div className="rounded-3xl border border-line bg-surface p-6 shadow-card lg:sticky lg:top-24">
+        <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
+          {hasLook && (
+            <div className="rounded-3xl border border-line bg-surface p-4 shadow-card">
+              <p className="mb-3 flex items-center justify-between text-xs font-bold uppercase tracking-[0.18em] text-muted">
+                Live preview <span className="flex items-center gap-1.5 normal-case tracking-normal"><span className="live-dot" /> updates as you pick</span>
+              </p>
+              <SitePreview look={look} name={siteName} />
+              <p className="mt-3 text-xs leading-relaxed text-muted">A sketch of your look. The real site is built with your own words and pictures.</p>
+            </div>
+          )}
+
+          {/* The brief builds up as questions are answered. No prices here. */}
+          <div className="rounded-3xl border border-line bg-surface p-6 shadow-card">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-muted">Your brief</p>
             {reached === 0 ? (
-              <p className="mt-3 text-sm leading-relaxed text-muted">Your answers collect here as you go. After the last question you get your estimated price.</p>
+              <p className="mt-3 text-sm leading-relaxed text-muted">Your answers collect here as you go. After the last question you get your {isFixed ? "price" : "estimated price"}.</p>
             ) : (
               <ol className="mt-3 space-y-1">
-                {questions.slice(0, reached).map((q, i) => (
+                {questions.slice(0, Math.min(reached, questions.length)).map((q, i) => (
                   <li key={q.id}>
                     <button type="button" onClick={() => goTo(i)} className={`flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left transition-colors duration-200 hover:bg-surface-2 ${i === step ? "bg-surface-2" : ""}`}>
                       <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-good/15 text-good"><Check width={12} height={12} strokeWidth={3.5} /></span>

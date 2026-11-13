@@ -27,7 +27,19 @@ export interface Quote {
   /** The range shown to the customer, or null when no estimate can be given. */
   estimate: Estimate | null;
   /** why there is no estimate, when there is none */
-  reason?: "quote_only" | "over_cap";
+  reason?: "quote_only" | "over_cap" | "fixed";
+  /** Set when reason is "fixed": the flat price in cents, shown and paid right away. */
+  fixedPrice?: number;
+}
+
+/** A question is asked unless it depends on an earlier choice that was answered differently. */
+export function isVisible(q: Question, input: Record<string, unknown>): boolean {
+  return !q.showIf || q.showIf.in.includes(input[q.showIf.id] as string);
+}
+
+/** The questions that apply to these answers, in order. Hidden ones are never asked, checked or stored. */
+export function visibleQuestions(service: Service, input: Record<string, unknown>): Question[] {
+  return service.questions.filter((q) => isVisible(q, input));
 }
 
 const STEP = 5_00; // estimates are rounded to whole 5 dollar steps
@@ -53,7 +65,8 @@ const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
 export function defaultAnswer(q: Question): AnswerValue {
   switch (q.kind) {
     case "choice":
-      return "";
+      // Look pickers start on the first entry so the preview has something to show.
+      return q.ui ? q.options[0].id : "";
     case "multi":
       return [];
     case "number":
@@ -88,7 +101,10 @@ export function checkAnswer(q: Question, raw: unknown): { value: AnswerValue } |
     case "text": {
       if (typeof raw !== "string") return { error: "Enter some text." };
       const text = raw.trim();
-      if (q.required && text.length < 10) return { error: "Please give a bit more detail (at least 10 characters)." };
+      const min = q.minLength ?? 10;
+      if (q.required && text.length < min) {
+        return { error: min > 5 ? `Please give a bit more detail (at least ${min} characters).` : "Please fill this in." };
+      }
       if (text.length > q.maxLength) return { error: `Keep it under ${q.maxLength} characters.` };
       return { value: text };
     }
@@ -109,8 +125,9 @@ export function quote(service: Service, input: Record<string, unknown>): QuoteRe
   const lines: Line[] = [];
   let sum = 0;
   let factor = 1;
+  let fixed: number | undefined;
 
-  for (const q of service.questions) {
+  for (const q of visibleQuestions(service, input)) {
     const checked = checkAnswer(q, input[q.id]);
     if ("error" in checked) {
       errors[q.id] = checked.error;
@@ -123,6 +140,7 @@ export function quote(service: Service, input: Record<string, unknown>): QuoteRe
       const option = q.options.find((o) => o.id === value)!;
       sum += option.price ?? 0;
       factor *= option.multiplier ?? 1;
+      if (option.fixed !== undefined) fixed = option.fixed;
       lines.push({ label: q.label, value: option.label, amount: option.price ?? 0, multiplier: option.multiplier });
     } else if (q.kind === "multi") {
       const picked = q.options.filter((o) => (value as string[]).includes(o.id));
@@ -142,6 +160,10 @@ export function quote(service: Service, input: Record<string, unknown>): QuoteRe
 
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
+  // A flat price comes from the config alone, so it wins over everything else.
+  if (fixed !== undefined) {
+    return { ok: true, answers, quote: { lines, total: fixed, estimate: null, reason: "fixed", fixedPrice: fixed } };
+  }
   if (service.quoteOnly) {
     return { ok: true, answers, quote: { lines, total: 0, estimate: null, reason: "quote_only" } };
   }

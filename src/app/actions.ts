@@ -6,9 +6,9 @@ import {
   ADMIN_COOKIE, adminPassword, createSessionToken, isValidSessionToken, passwordMatches, SESSION_SECONDS,
 } from "@/lib/admin-auth";
 import {
-  cancelOrder, clearPaymentAlert, createOrder, getOrder, isOrderId, setProgress, setQuote, WORK_STATUSES, type WorkStatus,
+  cancelOrder, clearPaymentAlert, createOrder, getOrder, isOrderId, isPayableAmount, setProgress, setQuote, WORK_STATUSES, type WorkStatus,
 } from "@/lib/orders";
-import { checkoutUrl, retireOpenSession } from "@/lib/payments";
+import { checkoutUrl, paymentsConfigured, retireOpenSession } from "@/lib/payments";
 import { checkEmail, quote } from "@/lib/pricing";
 import { allow, getBaseUrl, getClientIp } from "@/lib/request";
 import { getService } from "@/lib/services";
@@ -43,10 +43,17 @@ export async function submitOrder(serviceId: unknown, answers: unknown, contact:
   if (!result.ok) Object.assign(errors, result.errors);
   if (!result.ok || !email || Object.keys(errors).length > 0) return { ok: false, errors };
 
-  // Nothing is charged at this step. The request is saved with the estimate the
-  // customer saw, the owner confirms a final price, and only then can it be paid.
+  // A flat price (the surprise option) is known from the config alone, so it
+  // can be paid right away. Everything else is saved as a request: the owner
+  // confirms a final price first, and only then can it be paid.
+  const flat = result.quote.reason === "fixed" ? result.quote.fixedPrice ?? null : null;
+  if (flat !== null && !isPayableAmount(flat)) {
+    return { ok: false, errors: {}, message: "This option is not available right now. Please pick another." };
+  }
+
+  let order;
   try {
-    const order = await createOrder({
+    order = await createOrder({
       serviceId: service.id,
       serviceName: service.name,
       email,
@@ -54,13 +61,26 @@ export async function submitOrder(serviceId: unknown, answers: unknown, contact:
       answers: result.answers,
       lines: result.quote.lines,
       estimate: result.quote.estimate,
-      amountCents: null,
+      amountCents: flat,
     });
-    return { ok: true, url: `/order/${order.id}` };
   } catch (error) {
     console.error("submitOrder could not save the request", error);
-    return { ok: false, errors: {}, message: "We could not save your request. Please try again in a moment." };
+    return { ok: false, errors: {}, message: "We could not save your request. Nothing was charged. Please try again in a moment." };
   }
+
+  // The order is saved from here on. If Stripe is slow or down, the customer
+  // still lands on their order page, which has its own Pay button, rather than
+  // being told to start over and ending up with two orders.
+  if (order.amountCents !== null && paymentsConfigured()) {
+    try {
+      const pay = await checkoutUrl(order, await getBaseUrl());
+      if ("url" in pay) return { ok: true, url: pay.url };
+    } catch (error) {
+      console.error("submitOrder could not start checkout", error);
+      return { ok: true, url: `/order/${order.id}?pay=error` };
+    }
+  }
+  return { ok: true, url: `/order/${order.id}` };
 }
 
 export async function payOrder(formData: FormData): Promise<void> {

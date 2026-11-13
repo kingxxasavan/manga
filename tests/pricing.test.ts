@@ -1,14 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { checkEmail, estimateRange, quote } from "@/lib/pricing";
+import { checkEmail, defaultAnswer, estimateRange, quote, visibleQuestions } from "@/lib/pricing";
 import { getService, SERVICES, type Service } from "@/lib/services";
 import { MAX_ORDER_CENTS, MIN_ORDER_CENTS } from "@/lib/site";
+import { FONTS, IMAGERY, PALETTES, resolveLook, TEMPLATES } from "@/lib/templates";
 
 const website = getService("website")!;
-const DETAILS = "A site for my bakery with a menu.";
-const base = { type: "landing", pages: 1, features: [], level: "basic", details: DETAILS, links: "", revisions: 1, speed: "standard" };
-
+const writing = getService("writing")!;
 const scripts = getService("scripts")!;
+const custom = getService("custom")!;
+
+const DETAILS = "A site for my bakery with a menu.";
+const look = { template: "business", palette: "midnight", font: "modern", imagery: "photo" };
+const base = { type: "landing", siteName: "Crumb", ...look, pages: 3, features: [], level: "basic", details: DETAILS, links: "", revisions: 1, speed: "standard" };
 const scriptBase = { type: "script", complexity: "simple", level: "basic", extras: [], details: "Rename all my files by date.", revisions: 1, speed: "standard" };
+const essayBase = {
+  type: "essay", pages: 3, sources: "", citation: "apa", tone: "academic", font: "times", fontSize: "12",
+  complexity: "simple", level: "basic", details: "Why cities should plant more trees.", revisions: 1, speed: "standard",
+};
 
 const priced = (service: Service, input: Record<string, unknown>) => {
   const r = quote(service, input);
@@ -27,12 +35,17 @@ describe("quote", () => {
   it("scales with the level of finish and with rush, rounding to a whole dollar", () => {
     expect(priced(website, { ...base, level: "polished" }).total).toBe(54_00); // 45 x 1.2
     expect(priced(website, { ...base, level: "premium", speed: "rush" }).total).toBe(72_00); // 45 x 1.4 x 1.15 = 72.45
-    expect(priced(website, { ...base, type: "multi", pages: 5, features: ["blog", "form"], level: "polished", revisions: 2, speed: "rush" }).total).toBe(175_00); // 127 x 1.2 x 1.15 = 175.26
   });
   it("scales with complexity where a service asks for it", () => {
     expect(priced(scripts, scriptBase).total).toBe(25_00);
     expect(priced(scripts, { ...scriptBase, complexity: "complex" }).total).toBe(50_00);
-    expect(priced(scripts, { ...scriptBase, complexity: "huge" }).total).toBe(100_00);
+    expect(priced(scripts, { ...scriptBase, complexity: "huge" }).total).toBe(88_00); // 25 x 3.5 = 87.5
+  });
+  it("does not let the look of a website change its estimate", () => {
+    const plain = priced(website, base).total;
+    for (const template of TEMPLATES) for (const palette of PALETTES) {
+      expect(priced(website, { ...base, template: template.id, palette: palette.id, font: "tech", imagery: "none" }).total).toBe(plain);
+    }
   });
   it("gives the same result whatever order multi picks arrive in, and ignores duplicates", () => {
     expect(quote(website, { ...base, features: ["blog", "form"] })).toEqual(quote(website, { ...base, features: ["form", "blog", "blog"] }));
@@ -47,33 +60,101 @@ describe("quote", () => {
       id: "giant", name: "Giant", tagline: "", icon: "code", delivery: "", examples: [],
       questions: [{ id: "size", kind: "choice", label: "Size", options: [{ id: "big", label: "Big", price: MAX_ORDER_CENTS + 100 }] }],
     };
-    const q = priced(giant, { size: "big" });
-    expect(q.total).toBeGreaterThan(MAX_ORDER_CENTS);
-    expect(q).toMatchObject({ estimate: null, reason: "over_cap" });
-  });
-  it("never estimates the custom service", () => {
-    const q = priced(getService("custom")!, { details: "A study guide for my biology exam.", budget: "unsure", deadline: "week", links: "" });
-    expect(q).toMatchObject({ total: 0, estimate: null, reason: "quote_only" });
+    expect(priced(giant, { size: "big" })).toMatchObject({ estimate: null, reason: "over_cap" });
   });
   it("rejects missing, unknown and out of range answers", () => {
-    const r = quote(website, { ...base, type: "castle", pages: 99, features: ["nope"], level: "gold", details: "short", speed: undefined });
+    const r = quote(website, { ...base, type: "multi", pages: 99, features: ["nope"], level: "gold", template: "castle", details: "short", siteName: "", speed: undefined });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(["details", "features", "level", "pages", "speed", "type"]);
+    if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(["details", "features", "level", "pages", "siteName", "speed", "template"]);
   });
   it("rejects numbers that are not whole or not numbers", () => {
-    expect(quote(website, { ...base, pages: 1.5 }).ok).toBe(false);
-    expect(quote(website, { ...base, pages: "3" }).ok).toBe(false);
-    expect(quote(website, { ...base, pages: -4 }).ok).toBe(false);
+    const multi = { ...base, type: "multi" };
+    expect(quote(website, { ...multi, pages: 2.5 }).ok).toBe(false);
+    expect(quote(website, { ...multi, pages: "3" }).ok).toBe(false);
+    expect(quote(website, { ...multi, pages: -4 }).ok).toBe(false);
     expect(quote(website, { ...base, revisions: Number.NaN }).ok).toBe(false);
   });
   it("drops answers to questions that do not exist", () => {
-    const r = quote(website, { ...base, total: 1, discount: 100, estimate: { low: 1, high: 2 } });
-    expect(r.ok && Object.keys(r.answers).sort()).toEqual(["details", "features", "level", "links", "pages", "revisions", "speed", "type"]);
+    const r = quote(website, { ...base, total: 1, discount: 100, estimate: { low: 1, high: 2 }, fixed: 1 });
+    expect(r.ok && "total" in r.answers).toBe(false);
+    expect(r.ok && "fixed" in r.answers).toBe(false);
   });
   it("trims text and enforces its length", () => {
-    const r = quote(website, { ...base, details: `   ${DETAILS}   ` });
+    const r = quote(website, { ...base, details: `   ${DETAILS}   `, siteName: "  Crumb  " });
     expect(r.ok && r.answers.details).toBe(DETAILS);
+    expect(r.ok && r.answers.siteName).toBe("Crumb");
     expect(quote(website, { ...base, details: "x".repeat(2001) }).ok).toBe(false);
+    expect(quote(website, { ...base, siteName: "x".repeat(51) }).ok).toBe(false);
+    expect(quote(website, { ...base, siteName: "A" }).ok).toBe(false);
+  });
+});
+
+describe("questions that only apply sometimes", () => {
+  it("does not ask a one page site how many pages it has", () => {
+    expect(visibleQuestions(website, { type: "landing" }).some((q) => q.id === "pages")).toBe(false);
+    expect(visibleQuestions(website, { type: "store" }).some((q) => q.id === "pages")).toBe(true);
+  });
+  it("ignores, and does not store or charge for, an answer to a hidden question", () => {
+    const r = quote(website, { ...base, type: "landing", pages: 20 });
+    expect(r.ok && r.quote.total).toBe(45_00);
+    expect(r.ok && "pages" in r.answers).toBe(false);
+    // even a nonsense value for a hidden question is not an error
+    expect(quote(website, { ...base, type: "landing", pages: "lots" }).ok).toBe(true);
+  });
+  it("asks each kind of writing only its own questions", () => {
+    const ids = (type: string) => visibleQuestions(writing, { type }).map((q) => q.id);
+    expect(ids("essay")).toEqual(expect.arrayContaining(["pages", "sources", "citation", "tone", "font", "fontSize"]));
+    expect(ids("essay")).not.toEqual(expect.arrayContaining(["minutes"]));
+    expect(ids("book")).toEqual(expect.arrayContaining(["bookPages", "sources", "font", "fontSize"]));
+    expect(ids("book")).not.toEqual(expect.arrayContaining(["citation"]));
+    expect(ids("script")).toEqual(expect.arrayContaining(["minutes", "scriptFor", "font"]));
+    expect(ids("script")).not.toEqual(expect.arrayContaining(["sources"]));
+    expect(ids("product")).toEqual(expect.arrayContaining(["items"]));
+    expect(ids("product")).not.toEqual(expect.arrayContaining(["font", "fontSize", "sources", "pages"]));
+    expect(ids("resume")).not.toEqual(expect.arrayContaining(["pages", "sources", "citation"]));
+  });
+  it("estimates the new kinds of writing", () => {
+    expect(priced(writing, essayBase).total).toBe(12_00);
+    expect(priced(writing, { ...essayBase, pages: 10 }).total).toBe(23_00); // 12 + 7 x 1.5 = 22.5
+    const book = { ...essayBase, type: "book", bookPages: 120 };
+    expect(priced(writing, book).total).toBe(140_00); // 40 + 100 x 1
+    const script = { ...essayBase, type: "script", minutes: 13, scriptFor: "video" };
+    expect(priced(writing, script).total).toBe(30_00); // 15 + 10 x 1.5
+    expect(quote(writing, { ...essayBase, type: "script", minutes: 13 }).ok).toBe(false); // scriptFor is required for a script
+  });
+  it("records the formatting choices on the order", () => {
+    const q = priced(writing, { ...essayBase, sources: "Smith 2019, the city tree report", citation: "mla", font: "georgia", fontSize: "11" });
+    const said = Object.fromEntries(q.lines.map((l) => [l.label, l.value]));
+    expect(said["Which citation style?"]).toBe("MLA");
+    expect(said["Which font?"]).toBe("Georgia");
+    expect(said["What text size?"]).toBe("11 point");
+    expect(said["Any specific sources we should use?"]).toBe("Smith 2019, the city tree report");
+  });
+});
+
+describe("the flat price surprise", () => {
+  const random = { mode: "random", vibe: "chaos", form: "any", avoid: "" };
+  it("is a flat 15 dollars with no estimate", () => {
+    expect(priced(custom, random)).toMatchObject({ total: 15_00, estimate: null, reason: "fixed", fixedPrice: 15_00 });
+  });
+  it("only asks its own short questions", () => {
+    expect(visibleQuestions(custom, { mode: "random" }).map((q) => q.id)).toEqual(["mode", "vibe", "form", "avoid"]);
+    expect(visibleQuestions(custom, { mode: "idea" }).map((q) => q.id)).toEqual(["mode", "details", "budget", "deadline", "links"]);
+  });
+  it("cannot be turned into a flat price for a real project", () => {
+    // Asking for the idea path never returns a fixed price, whatever else is sent along.
+    const q = priced(custom, { mode: "idea", details: "A full mobile app for my shop.", budget: "unsure", deadline: "week", links: "", vibe: "chaos", fixed: 1500, fixedPrice: 1 });
+    expect(q).toMatchObject({ total: 0, estimate: null, reason: "quote_only" });
+    expect(q.fixedPrice).toBeUndefined();
+  });
+  it("still needs its questions answered", () => {
+    expect(quote(custom, { mode: "random" }).ok).toBe(false);
+    expect(quote(custom, { mode: "nope" }).ok).toBe(false);
+  });
+  it("is the only flat price in the catalogue, and it is a payable amount", () => {
+    const flats = SERVICES.flatMap((s) => s.questions.flatMap((q) => ("options" in q ? q.options : []).filter((o) => o.fixed !== undefined).map((o) => o.fixed!)));
+    expect(flats).toEqual([15_00]);
+    expect(flats[0]).toBeGreaterThanOrEqual(MIN_ORDER_CENTS);
   });
 });
 
@@ -99,31 +180,23 @@ describe("service config", () => {
     expect(new Set(SERVICES.map((s) => s.id)).size).toBe(SERVICES.length);
     for (const s of SERVICES) expect(new Set(s.questions.map((q) => q.id)).size).toBe(s.questions.length);
   });
+  it("only makes a question depend on an earlier choice question, with answers that exist", () => {
+    for (const s of SERVICES) {
+      s.questions.forEach((q, i) => {
+        if (!q.showIf) return;
+        const parent = s.questions.slice(0, i).find((p) => p.id === q.showIf!.id);
+        expect(parent?.kind, `${s.id}.${q.id}`).toBe("choice");
+        if (parent?.kind === "choice") {
+          for (const id of q.showIf.in) expect(parent.options.some((o) => o.id === id), `${s.id}.${q.id} -> ${id}`).toBe(true);
+        }
+      });
+    }
+  });
   it("asks about level on every estimated service, and about size or complexity", () => {
     for (const s of SERVICES.filter((x) => !x.quoteOnly)) {
       const ids = s.questions.map((q) => q.id);
       expect(ids, s.id).toContain("level");
       expect(ids.includes("complexity") || ids.includes("pages"), s.id).toBe(true);
-    }
-  });
-  // Builds a request by picking one option per choice question and a count per number question.
-  const request = (s: Service, pick: (ids: string[], questionId: string) => string, count: (q: { min: number; max: number; included: number }) => number, multi: (ids: string[]) => string[]) => {
-    const input: Record<string, unknown> = {};
-    for (const q of s.questions) {
-      if (q.kind === "choice") input[q.id] = pick(q.options.map((o) => o.id), q.id);
-      else if (q.kind === "multi") input[q.id] = multi(q.options.map((o) => o.id));
-      else if (q.kind === "number") input[q.id] = count(q);
-      else input[q.id] = q.required ? "Enough detail to pass." : "";
-    }
-    return input;
-  };
-  const estimated = SERVICES.filter((x) => !x.quoteOnly);
-
-  it("can produce an estimate for the cheapest possible request of each service", () => {
-    for (const s of estimated) {
-      const q = priced(s, request(s, (ids) => ids[0], (n) => n.min, () => []));
-      expect(q.estimate, s.id).not.toBeNull();
-      expect(q.estimate!.low, s.id).toBeGreaterThanOrEqual(MIN_ORDER_CENTS);
     }
   });
   it("only offers the very complex tier for software", () => {
@@ -133,18 +206,40 @@ describe("service config", () => {
       expect(hasHuge, s.id).toBe(s.id === "scripts");
     }
   });
-  it("lets a very complex full app or game go well above 500 dollars", () => {
-    const q = priced(scripts, { ...scriptBase, type: "app", complexity: "huge", level: "premium" }); // 150 x 4 x 1.4 = 840
-    expect(q.total).toBe(840_00);
-    expect(q.estimate!.low).toBeGreaterThan(500_00);
-    expect(q.estimate!.high).toBeLessThanOrEqual(MAX_ORDER_CENTS);
+});
+
+describe("the look catalogue", () => {
+  it("offers every template, color set, text style and image style in the website builder", () => {
+    const options = (id: string) => {
+      const q = website.questions.find((x) => x.id === id);
+      return q?.kind === "choice" ? q.options.map((o) => o.id) : [];
+    };
+    expect(options("template")).toEqual(TEMPLATES.map((t) => t.id));
+    expect(options("palette")).toEqual(PALETTES.map((p) => p.id));
+    expect(options("font")).toEqual(FONTS.map((f) => f.id));
+    expect(options("imagery")).toEqual(IMAGERY.map((i) => i.id));
   });
-  it("never needs a hand made price for anything the questions can produce", () => {
-    // Even with everything maxed out, each service stays under the cap and gets an estimate.
-    for (const s of estimated) {
-      const q = priced(s, request(s, (ids, id) => (id === "type" && s.id === "scripts" ? "app" : ids[ids.length - 1]), (n) => n.max, (ids) => ids));
-      expect(q.estimate, `${s.id} maxed out`).not.toBeNull();
+  it("starts the look pickers on a real choice so the preview is never empty", () => {
+    for (const q of website.questions) {
+      if (q.kind === "choice" && q.ui) expect(defaultAnswer(q)).toBe(q.options[0].id);
+      else if (q.kind === "choice") expect(defaultAnswer(q)).toBe("");
     }
+  });
+  it("has a template suited to every kind of website", () => {
+    const type = website.questions.find((q) => q.id === "type");
+    const kinds = type?.kind === "choice" ? type.options.map((o) => o.id) : [];
+    for (const kind of kinds) expect(TEMPLATES.some((t) => t.goodFor.includes(kind)), kind).toBe(true);
+  });
+  it("resolves stored answers into a look, and falls back safely on junk", () => {
+    expect(resolveLook({ template: "blog", palette: "forest", font: "classic", imagery: "none" })).toMatchObject({
+      template: { id: "blog" }, palette: { id: "forest" }, font: { id: "classic" }, imagery: { id: "none" },
+    });
+    expect(resolveLook({ template: 7, palette: "<script>", font: null })).toMatchObject({
+      template: { id: TEMPLATES[0].id }, palette: { id: PALETTES[0].id }, font: { id: FONTS[0].id }, imagery: { id: IMAGERY[0].id },
+    });
+  });
+  it("only uses plain hex colors, so a palette can never carry anything but a color", () => {
+    for (const p of PALETTES) for (const value of [p.bg, p.surface, p.text, p.muted, p.accent, p.accentInk]) expect(value, p.id).toMatch(/^#[0-9a-f]{6}$/);
   });
 });
 

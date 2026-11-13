@@ -4,12 +4,13 @@ import { ArrowRight, Check, Clock, Lock, ServiceIcon } from "@/components/icons"
 import { ProcessDemo } from "@/components/process-demo";
 import { Reveal } from "@/components/reveal";
 import { SERVICES } from "@/lib/services";
+import { LAUNCH_PRICING } from "@/lib/site";
 
 const PROMISES = [
   { title: "No charge until you agree", body: "You get an estimate first, then a confirmed price. You pay only after you have seen the final number and are happy with it." },
   { title: "Changes are included", body: "Every order comes with a round of changes, and you can add more rounds when you order." },
   { title: "You always know where it is", body: "Your private order page shows each step from received to done, with our notes along the way." },
-  { title: "Priced on the actual job", body: "Your price follows how complex the work is and the level of finish you want, not a one size fits all package." },
+  { title: "See it before we build it", body: "Designing a website? Pick a layout, colors and text style and watch a live preview change as you choose." },
 ];
 
 const FAQ = [
@@ -32,13 +33,13 @@ export default function HomePage() {
         <div className="grid items-center gap-14 lg:grid-cols-[1.15fr_1fr]">
           <div>
             <p className="rise inline-flex items-center gap-2.5 rounded-full border border-line bg-surface px-4 py-1.5 text-xs font-semibold text-muted">
-              <span className="live-dot" /> Taking new orders
+              <span className="live-dot" /> {LAUNCH_PRICING ? "Now open, with launch pricing" : "Taking new orders"}
             </p>
             <h1 className="rise mt-6 text-[2.75rem] font-extrabold leading-[1.02] sm:text-6xl lg:text-[4.25rem]" style={{ animationDelay: "60ms" }}>
               Describe it.<br />Get an estimate.<br /><span className="text-gradient">We build it.</span>
             </h1>
             <p className="rise mt-6 max-w-lg text-lg leading-relaxed text-muted" style={{ animationDelay: "120ms" }}>
-              Websites, writing, graphics and small tools, made to order. Answer a few questions, get an estimated price based on how complex it is, and follow your order to the finish.
+              Websites, writing, graphics and small tools, made to order. Tell us what you want like you would ask an AI, get an estimated price based on how complex it is, and follow your order to the finish.
             </p>
             <div className="rise mt-8 flex flex-wrap gap-3" style={{ animationDelay: "180ms" }}>
               <Link href="#services" className="btn btn-light px-7 py-3.5">
@@ -84,6 +85,11 @@ export default function HomePage() {
                     <li key={example} className="rounded-full border border-line px-3 py-1 text-xs font-semibold text-muted">{example}</li>
                   ))}
                 </ul>
+                {service.id === "custom" && (
+                  <p className="mt-5 max-w-lg text-sm leading-relaxed text-muted">
+                    Feeling lucky? Pick <span className="font-bold text-text">Surprise me</span> and get something random made just for you, from a cursed image to a gloriously bad little game. Flat <span className="font-bold text-text">$15</span>.
+                  </p>
+                )}
                 <div className="mt-auto flex items-center justify-between gap-3 pt-7">
                   <p className="text-sm text-muted">
                     <span className="block text-[11px] font-bold uppercase tracking-[0.16em]">Usual delivery</span>

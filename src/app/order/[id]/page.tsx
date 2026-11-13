@@ -5,11 +5,13 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { payOrder } from "@/app/actions";
 import { Check, Lock } from "@/components/icons";
+import { SitePreview } from "@/components/site-preview";
 import { DatabaseNotConfigured } from "@/lib/db";
 import { formatDateTime, formatMoney } from "@/lib/money";
 import { canPay, getOrder, STATUS_LABEL, WORK_STATUSES, type Order } from "@/lib/orders";
 import { paymentsConfigured } from "@/lib/payments";
 import { SUPPORT_EMAIL } from "@/lib/site";
+import { resolveLook } from "@/lib/templates";
 
 // The link is the key to the order: keep it out of search engines and out of referrer headers.
 export const metadata: Metadata = { title: "Your order", robots: { index: false, follow: false }, referrer: "no-referrer" };
@@ -28,7 +30,7 @@ function Headline({ order }: { order: Order }) {
   const map: Record<Order["status"], [string, string]> = {
     quote_requested: ["We got your request", "We are checking the details and confirming your final price. It will appear on this page, so keep this link and check back."],
     quote_ready: ["Your price is ready", "This is your confirmed price. Happy with it? Pay below and we get started."],
-    awaiting_payment: ["Almost there", "Your order is saved. Pay below and we get started."],
+    awaiting_payment: ["Almost there", "Your order is saved. Pay below and we get making."],
     received: ["Payment received, thank you", "Your order is in the queue. This page updates as we work on it."],
     in_progress: ["We are working on it", "Your order is being made right now."],
     draft_ready: ["Your draft is ready", "Take a look and tell us what to change."],
@@ -126,7 +128,7 @@ async function OrderView({ params, searchParams }: Props) {
         <section className="mt-8 rounded-3xl border border-accent/50 bg-accent-soft p-5 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <p>
-              <span className="block text-xs font-bold uppercase tracking-widest text-muted">Final price</span>
+              <span className="block text-xs font-bold uppercase tracking-widest text-muted">{order.status === "awaiting_payment" ? "Flat price" : "Final price"}</span>
               <span className="font-display text-4xl font-extrabold tabular-nums">{formatMoney(order.amountCents!)}</span>
               {order.estimate && (
                 <span className="mt-1 block text-sm text-muted">Your estimate was {formatMoney(order.estimate.low)} to {formatMoney(order.estimate.high)}</span>
@@ -144,6 +146,14 @@ async function OrderView({ params, searchParams }: Props) {
             )}
           </div>
           {pay === "error" && <p role="alert" className="mt-4 font-semibold text-danger">We could not open the payment page. You were not charged. Please try again.</p>}
+        </section>
+      )}
+
+      {order.serviceId === "website" && typeof order.answers.template === "string" && (
+        <section className="mt-8">
+          <h2 className="text-xl font-bold">The look you picked</h2>
+          <p className="mt-1 text-sm text-muted">A sketch of your layout, colors and text style. The real site is built with your own words and pictures.</p>
+          <SitePreview look={resolveLook(order.answers)} name={typeof order.answers.siteName === "string" ? order.answers.siteName : ""} className="mt-4 max-w-xl" />
         </section>
       )}
 

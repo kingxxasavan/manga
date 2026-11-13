@@ -10,6 +10,8 @@ import { listOrders, STATUS_LABEL, WORK_STATUSES, type Order } from "@/lib/order
 import { paymentsConfigured } from "@/lib/payments";
 import { getBaseUrl } from "@/lib/request";
 import { SITE_NAME } from "@/lib/site";
+import { resolveLook } from "@/lib/templates";
+import { SitePreview } from "@/components/site-preview";
 
 export const metadata: Metadata = { title: "Orders", robots: { index: false, follow: false } };
 
@@ -53,6 +55,10 @@ function OrderCard({ order, baseUrl }: { order: Order; baseUrl: string }) {
             <p className="min-w-0 flex-1 break-words font-semibold text-danger">Payment needs a look: {order.paymentAlert}</p>
             <button className="btn border border-danger px-4 py-2 text-sm text-danger">I handled it</button>
           </form>
+        )}
+
+        {order.serviceId === "website" && typeof order.answers.template === "string" && (
+          <SitePreview look={resolveLook(order.answers)} name={typeof order.answers.siteName === "string" ? order.answers.siteName : ""} className="max-w-md" />
         )}
 
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
