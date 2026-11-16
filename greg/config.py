@@ -77,6 +77,7 @@ class Settings:
 
     recall_k: int = 8
     history_messages: int = 24
+    history_chars: int = 24000  # about 6000 tokens of past conversation
     learn: bool = True
     consolidate_minutes: int = 60
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 
@@ -10,6 +11,8 @@ import numpy as np
 
 from greg.config import Settings
 from greg.llm.provider import ChatResult, OpenAIProvider, ProviderError
+
+NO_TOOLS = re.compile(r"does not support tools|tools? (is|are) not supported|not support (tool|function)", re.I)
 
 
 class AllProvidersFailed(Exception):
@@ -23,6 +26,7 @@ class Router:
             OpenAIProvider(p, settings.request_timeout, transport) for p in settings.active_providers()
         ]
         self._resting_until: dict[str, float] = {}
+        self.toolless: set[tuple[str, str]] = set()
         self.last_errors: dict[str, str] = {}
 
     async def close(self) -> None:
@@ -58,10 +62,7 @@ class Router:
             if not model:
                 continue
             try:
-                result = await provider.chat(model, messages, tools, on_text, stream=True)
-                if tools and not result.content and not result.tool_calls:
-                    # Some servers drop tool calls while streaming. Ask again plainly.
-                    result = await provider.chat(model, messages, tools, on_text, stream=False)
+                result = await self._ask(provider, model, messages, tools, on_text)
                 self._resting_until.pop(provider.name, None)
                 return result
             except ProviderError as e:
@@ -72,6 +73,23 @@ class Router:
                     raise
                 errors.append(str(e) if provider.name in str(e) else f"{provider.name}: {e}")
         raise AllProvidersFailed("No model answered. " + " | ".join(errors or ["no providers configured"]))
+
+    async def _ask(self, provider: OpenAIProvider, model: str, messages, tools, on_text) -> ChatResult:
+        if (provider.name, model) in self.toolless:
+            tools = None
+        try:
+            result = await provider.chat(model, messages, tools, on_text, stream=True)
+        except ProviderError as e:
+            if not tools or e.emitted or not NO_TOOLS.search(str(e)):
+                raise
+            # This model cannot use tools at all. A plain answer beats no answer,
+            # and it is remembered so the failed call is not repeated every turn.
+            self.toolless.add((provider.name, model))
+            return await provider.chat(model, messages, None, on_text, stream=True)
+        if tools and not result.content and not result.tool_calls:
+            # Some servers drop tool calls while streaming. Ask again plainly.
+            result = await provider.chat(model, messages, tools, on_text, stream=False)
+        return result
 
     async def embed(self, texts: list[str], kind: str = "passage") -> tuple[str, list[np.ndarray]] | None:
         """Vectors for the texts plus a tag naming who made them, or None when

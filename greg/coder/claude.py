@@ -12,7 +12,9 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from greg.config import Settings
 from greg.memory.store import Memory
@@ -21,7 +23,7 @@ from greg.tools.builtin.system import run_process
 RESTING_KEY = "claude_resting_until"
 LIMIT_CATEGORIES = {"rate_limit", "billing_error", "overloaded"}
 LIMIT = re.compile(
-    r"usage limit|rate limit|rate_limit|hit your limit|limit reached|out of (extra )?usage|"
+    r"usage limit|rate limit|rate_limit|hit your (?:[\w-]+ )?limit|limit reached|out of (extra )?usage|"
     r"credit balance|billing_error|quota exceeded|insufficient (credits|funds)",
     re.IGNORECASE,
 )
@@ -44,13 +46,21 @@ def parse_reset(text: str) -> float | None:
     stamp = re.search(r"\|(\d{10})\b", text)
     if stamp:
         return float(stamp.group(1))
-    clock = re.search(r"resets?\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)", text, re.IGNORECASE)
+    clock = re.search(r"resets?\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?:\s*\(([\w/+-]+)\))?", text, re.I)
     if not clock:
         return None
     hour = int(clock.group(1)) % 12 + (12 if clock.group(3).lower() == "pm" else 0)
-    now = time.localtime()
-    target = time.mktime((now.tm_year, now.tm_mon, now.tm_mday, hour, int(clock.group(2) or 0), 0, 0, 0, -1))
-    return target if target > time.time() else target + 86400
+    zone = None  # the server's own timezone unless Claude names one, like "(UTC)"
+    if clock.group(4):
+        try:
+            zone = ZoneInfo(clock.group(4))
+        except (ZoneInfoNotFoundError, ValueError):
+            zone = None
+    now = datetime.now(zone) if zone else datetime.now().astimezone()
+    target = now.replace(hour=hour, minute=int(clock.group(2) or 0), second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return target.timestamp()
 
 
 def _envelope(output: str) -> dict | None:

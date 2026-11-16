@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from greg.tools.base import DANGER, SAFE, Tool
 
@@ -25,14 +26,33 @@ def inside(path: str, workspace: Path) -> bool:
     return resolve(path, workspace).is_relative_to(workspace.resolve())
 
 
-def _paths(args: dict) -> list[str]:
-    found: list[str] = []
-    for key, value in args.items():
-        if key.lower() not in PATH_KEYS:
-            continue
-        values = value if isinstance(value, list) else [value]
-        found.extend(str(v) for v in values if isinstance(v, (str, Path)) and str(v))
-    return found
+def _from_uri(value: str) -> str:
+    return unquote(urlparse(value).path) if value.startswith("file://") else value
+
+
+def _looks_like_path(value: str) -> bool:
+    """A single word that starts like an absolute path, a home path, a climb
+    out of the folder, or a file link. Ordinary text has spaces and web links
+    start with http, so neither is caught."""
+    if len(value) < 2 or len(value) > 1024 or any(c.isspace() for c in value):
+        return False
+    return value.startswith(("/", "~/", "../", "file://")) or value in ("~", "..")
+
+
+def _paths(args, under_path_key: bool = False) -> list[str]:
+    """Every value that is a path: anything under a known path argument name,
+    plus anything anywhere that plainly looks like a path. Tool servers name
+    their arguments however they like, so the name alone is not trusted."""
+    if isinstance(args, dict):
+        found: list[str] = []
+        for key, value in args.items():
+            found += _paths(value, str(key).lower() in PATH_KEYS)
+        return found
+    if isinstance(args, (list, tuple)):
+        return [p for value in args for p in _paths(value, under_path_key)]
+    if isinstance(args, (str, Path)) and str(args) and (under_path_key or _looks_like_path(str(args))):
+        return [_from_uri(str(args))]
+    return []
 
 
 def decide(tool: Tool, args: dict, settings) -> tuple[str, str]:

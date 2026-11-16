@@ -55,6 +55,18 @@ class Agent:
         while self._background:
             await asyncio.gather(*list(self._background), return_exceptions=True)
 
+    def _fit(self, history: list[dict]) -> list[dict]:
+        """Newest messages that fit the character budget. Small local models have
+        small context windows, and when they overflow the model silently loses
+        the start of the prompt, which is where its instructions are."""
+        kept, used = [], 0
+        for message in reversed(history):
+            used += len(message["content"])
+            if used > self.settings.history_chars:
+                break
+            kept.append(message)
+        return kept[::-1]
+
     def _about(self) -> list[str]:
         lines, used = [], 0
         for row in sorted(self.memory.pinned(), key=lambda m: -m.importance):
@@ -91,7 +103,7 @@ class Agent:
         emit = emit or (lambda event: None)
         sid = self.memory.ensure_session(session_id, mode if mode in MODES else None)
         session = self.memory.session(sid)
-        history = self.memory.history(sid, self.settings.history_messages)
+        history = self._fit(self.memory.history(sid, self.settings.history_messages))
         self.memory.add_message(sid, "user", text)
 
         try:
@@ -135,6 +147,10 @@ class Agent:
                 )
                 emit({"type": "text", "delta": note})
                 reply.content = note
+            if not reply.content.strip():
+                note = "I got an empty reply from the model. Ask again, and if it keeps happening run `greg doctor`."
+                emit({"type": "text", "delta": note})
+                reply.content = note
         except (AllProvidersFailed, ProviderError) as e:
             message = f"No model could answer right now. {e}"
             emit({"type": "error", "message": message})
@@ -166,6 +182,8 @@ class Agent:
         if tool is None:
             return f"Error: there is no tool named {tool_call.name}. Use find_tools to look for one that fits."
         args = tool_call.arguments
+        if "_unparsed" in args:
+            return f"Error: the arguments for {tool.name} were not valid JSON, so it was not run. Send them again as one JSON object."
         verdict, reason = decide(tool, args, self.settings)
         if verdict == "ask":
             ctx.emit({"type": "tool", "name": tool.name, "args": args, "status": "asking"})

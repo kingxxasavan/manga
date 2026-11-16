@@ -151,6 +151,7 @@ class OpenAIProvider:
             filt = ThinkFilter()
             parts: list[str] = []
             partial: dict[int, dict] = {}
+            ordered: list[dict] = []
 
             def emit(piece: str) -> None:
                 nonlocal emitted
@@ -177,7 +178,14 @@ class OpenAIProvider:
                     if delta.get("content"):
                         emit(filt.feed(delta["content"]))
                     for tc in delta.get("tool_calls") or []:
-                        slot = partial.setdefault(tc.get("index", 0), {"id": "", "name": "", "args": ""})
+                        index, call_id = tc.get("index", 0), tc.get("id")
+                        slot = partial.get(index)
+                        if slot is None or (call_id and slot["id"] and call_id != slot["id"]):
+                            # Some servers reuse index 0 for every call, so a
+                            # new id means a new call, not more of the last one.
+                            slot = {"id": "", "name": "", "args": ""}
+                            partial[index] = slot
+                            ordered.append(slot)
                         fn = tc.get("function") or {}
                         slot["id"] = tc.get("id") or slot["id"]
                         slot["name"] = fn.get("name") or slot["name"]
@@ -186,7 +194,7 @@ class OpenAIProvider:
             emit(filt.flush())
             calls = [
                 ToolCall(s["id"] or f"call_{i}", s["name"], _arguments(s["args"]))
-                for i, s in sorted(partial.items())
+                for i, s in enumerate(ordered)
                 if s["name"]
             ]
             return ChatResult("".join(parts).strip(), calls, self.name, model)
