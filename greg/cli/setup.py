@@ -7,7 +7,7 @@ the last question is answered with yes.
 It writes three files into Greg's home folder:
   greg.toml    settings from the preset
   .env         keys, private to your user
-  setup-plan   what install.sh should install next
+  setup-plan   what setup.sh should install next
 """
 
 from __future__ import annotations
@@ -79,18 +79,36 @@ PRESETS = {
     ]
 }
 
-# (env name, label, what it is for, prefixes a real one starts with)
-MAIN_KEYS = [
-    ("NVIDIA_API_KEY", "Nvidia key", "hosted models, free at build.nvidia.com", ("nvapi-",)),
-    ("ANTHROPIC_API_KEY", "Anthropic key", "lets Claude write your code, skip if you log in with `claude`", ("sk-ant-",)),
-    ("GITHUB_TOKEN", "GitHub token", "code search and the GitHub tools", ("ghp_", "github_pat_", "gho_")),
-]
-TOOL_KEYS = [
-    ("NOTION_TOKEN", "Notion token", "your Notion pages", ("ntn_", "secret_")),
-    ("BRAVE_API_KEY", "Brave Search key", "web search", ()),
-    ("TAVILY_API_KEY", "Tavily key", "web search tuned for AI", ("tvly-",)),
-    ("FIRECRAWL_API_KEY", "Firecrawl key", "crawl whole sites", ("fc-",)),
-    ("EXA_API_KEY", "Exa key", "meaning based web search", ()),
+@dataclass(frozen=True)
+class KeyOption:
+    env: str          # name in .env
+    label: str        # what the hidden prompt says
+    title: str        # the option it belongs to
+    turns_on: str
+    get_it: str
+    prefixes: tuple = ()  # what a real one starts with, for a paste check
+
+
+KEY_OPTIONS = [
+    KeyOption("NVIDIA_API_KEY", "Nvidia key", "Nvidia hosted models",
+              "big models with no GPU needed, and the backup when Ollama is down",
+              "free at build.nvidia.com", ("nvapi-",)),
+    KeyOption("ANTHROPIC_API_KEY", "Anthropic key", "Claude for code",
+              "Claude writes your code. Skip this if you log in by running `claude` instead",
+              "console.anthropic.com", ("sk-ant-",)),
+    KeyOption("GITHUB_TOKEN", "GitHub token", "GitHub",
+              "code search, issues and pull requests",
+              "github.com/settings/tokens", ("ghp_", "github_pat_", "gho_")),
+    KeyOption("NOTION_TOKEN", "Notion token", "Notion",
+              "read and write your Notion pages", "notion.so/profile/integrations", ("ntn_", "secret_")),
+    KeyOption("BRAVE_API_KEY", "Brave Search key", "Brave Search",
+              "web, news and image search", "brave.com/search/api"),
+    KeyOption("TAVILY_API_KEY", "Tavily key", "Tavily",
+              "web search tuned for AI", "tavily.com", ("tvly-",)),
+    KeyOption("FIRECRAWL_API_KEY", "Firecrawl key", "Firecrawl",
+              "crawl and scrape whole websites", "firecrawl.dev", ("fc-",)),
+    KeyOption("EXA_API_KEY", "Exa key", "Exa",
+              "meaning based web search", "exa.ai"),
 ]
 
 
@@ -198,7 +216,7 @@ def key_warning(name: str, value: str) -> str:
     """A hint when a pasted key looks off. Never blocks: formats change."""
     if any(c.isspace() for c in value):
         return "That has a space in it. Keys never do, so it may be a bad paste."
-    prefixes = next((p for n, _, _, p in MAIN_KEYS + TOOL_KEYS if n == name), ())
+    prefixes = next((o.prefixes for o in KEY_OPTIONS if o.env == name), ())
     if prefixes and not value.startswith(prefixes):
         return f"Heads up: these usually start with {' or '.join(prefixes)}. Saved anyway."
     if len(value) < 12:
@@ -251,9 +269,11 @@ def run_wizard(
     preset: str | None = None,
     yes: bool = False,
 ) -> Result:
-    """Walks the four steps. `ask(question, default, secret)` gets an answer,
-    `say(text)` shows text. With `yes` nothing is asked: every suggestion is
-    taken and keys come from the environment."""
+    """The choices: preset, options, what to install. No keys here, those are
+    asked by run_keys once everything is downloaded.
+
+    `ask(question, default, secret)` gets an answer and `say(text)` shows text.
+    With `yes` nothing is asked and every suggestion is taken."""
     if preset is not None and preset not in PRESETS:
         raise ValueError(f"Unknown preset {preset!r}. Pick one of: {', '.join(PRESETS)}")
     home = Path(home)
@@ -277,7 +297,7 @@ def run_wizard(
             star = "   <- best fit for this machine" if name == best else ""
             rows.append(f"{number}  {PRESETS[name].title}{star}")
             rows.append(f"   {PRESETS[name].blurb}")
-        say(window("Greg setup   step 1 of 4   Pick a preset", rows))
+        say(window("Greg setup   step 1 of 3   Pick a preset", rows))
         preset = best
         for _ in range(3):
             answer = question(f"Which preset? Number or name [Enter = {names.index(best) + 1}] ").lower()
@@ -293,51 +313,10 @@ def run_wizard(
     chosen = PRESETS[preset]
     say(f"  Preset: {chosen.title}")
 
-    # ---- step 2: keys ------------------------------------------------------
-    env_changes: dict[str, str] = {}
+    env_changes: dict[str, str] = {}  # only the remote access settings, keys come later
 
-    def key_step(name: str, label: str, why: str) -> None:
-        in_file, in_env = saved.get(name, ""), env.get(name, "")
-        current = in_file or in_env
-        if in_file:
-            say(f"  {label}: saved already, ends in ...{in_file[-4:]}")
-        elif in_env:
-            say(f"  {label}: found in your environment, ends in ...{in_env[-4:]}. Filling it in for you.")
-            env_changes[name] = in_env  # into the file, so a background Greg has it too
-        answer = question(f"{label} ({why}): ", "", secret=True)
-        if answer == "-":
-            env_changes[name] = ""
-            say(f"  {label} removed.")
-        elif answer:
-            env_changes[name] = answer
-            warning = key_warning(name, answer)
-            say(f"  {label} saved, ends in ...{answer[-4:]}" + (f"\n  {warning}" if warning else ""))
-        elif not current:
-            say(f"  {label}: skipped")
-
-    say(window("Greg setup   step 2 of 4   Keys", [
-        "Paste a key and press Enter. What you type stays hidden.",
-        "Enter alone skips it, or keeps the one that is already there.",
-        "A single - removes a saved key.",
-    ]))
-    for name, label, why, _ in MAIN_KEYS:
-        key_step(name, label, why)
-    if yes:
-        for name, _, _, _ in TOOL_KEYS:
-            if env.get(name) and not saved.get(name):
-                env_changes[name] = env[name]
-    elif yes_no("Set up extra tools too? (5 more turn on when you add their login)", False):
-        for name, label, why, _ in TOOL_KEYS:
-            key_step(name, label, why)
-
-    def final(name: str) -> str:
-        return env_changes.get(name, saved.get(name, ""))
-
-    if preset == "cloud" and not final("NVIDIA_API_KEY"):
-        say(f"  The cloud preset runs on Nvidia. Greg cannot talk until NVIDIA_API_KEY is in {home / '.env'}.")
-
-    # ---- step 3: options ---------------------------------------------------
-    say(window("Greg setup   step 3 of 4   Options", ["Enter takes the suggestion in [brackets]."]))
+    # ---- step 2: options ---------------------------------------------------
+    say(window("Greg setup   step 2 of 3   Options", ["Enter takes the suggestion in [brackets]."]))
     name = question("What do you want to call it? [Greg] ", "Greg")[:40].strip() or "Greg"
     voice = yes_no("Install voice, so you can talk and it can talk back?", chosen.voice)
     was_open = saved.get("GREG_HOST", "") not in ("", "127.0.0.1", "localhost")
@@ -350,8 +329,8 @@ def run_wizard(
     elif was_open:
         env_changes["GREG_HOST"] = ""
 
-    # ---- step 4: what to install -------------------------------------------
-    say(window("Greg setup   step 4 of 4   What to install", [
+    # ---- step 3: what to install -------------------------------------------
+    say(window("Greg setup   step 3 of 3   What to install", [
         "Say n to skip anything. You can run the installer again later.",
     ]))
     install_ollama, pull = False, []
@@ -390,11 +369,10 @@ def run_wizard(
     }
 
     # ---- confirm, then write -----------------------------------------------
-    keys_now = [label for n, label, _, _ in MAIN_KEYS + TOOL_KEYS if final(n)]
     say(window("Greg setup   Summary", [
         f"Name      {name}",
         f"Preset    {chosen.title}",
-        f"Keys      {', '.join(keys_now) or 'none yet'}",
+        "Keys      asked for after everything is downloaded",
         f"Models    {', '.join(pull) or ('none to download' if chosen.pull else 'hosted by Nvidia')}",
         f"Install   {', '.join(what for what, on in [('Ollama', install_ollama), ('Node', install_node), ('Claude Code', install_claude), ('voice', voice), ('tool servers', sync_tools)] if on) or 'nothing new'}",
         f"Remote    {'yes, with a token' if remote else 'no, this machine only'}",
@@ -419,3 +397,72 @@ def run_wizard(
         say(f"  On the other machine put GREG_URL=http://<this server>:8765 and the same GREG_TOKEN "
             f"in its .env. Your GREG_TOKEN is in {home / '.env'}.")
     return Result(preset=preset, home=home, plan=plan)
+
+
+def run_keys(
+    home: Path,
+    env: dict,
+    ask: Callable[..., str],
+    say: Callable[[str], None],
+    yes: bool = False,
+) -> dict[str, str]:
+    """The key step, run after everything is downloaded. Every option that
+    needs a key is asked about on its own. Returns what changed, by name,
+    without the key values.
+
+    Enter skips an option or keeps its saved key. A single - removes it. A key
+    already in the environment is filled in without typing. With `yes` nothing
+    is asked and only the environment is used.
+    """
+    home = Path(home)
+    saved = read_dotenv(home / ".env")
+    changes: dict[str, str] = {}
+    total = len(KEY_OPTIONS)
+    if not yes:
+        say(window("Greg setup   Keys", [
+            "Everything is downloaded. Now the keys, one option at a time.",
+            "Paste a key and press Enter. What you type stays hidden.",
+            "Enter alone skips the option, or keeps the key it already has.",
+            "A single - removes a saved key.",
+        ]))
+
+    for number, option in enumerate(KEY_OPTIONS, 1):
+        in_file, in_env = saved.get(option.env, ""), env.get(option.env, "")
+        if in_env and not in_file:
+            changes[option.env] = in_env  # into the file, so a background Greg has it too
+        if yes:
+            continue
+        if in_file:
+            now = f"saved already, ends in ...{in_file[-4:]}"
+        elif in_env:
+            now = f"found in your environment, ends in ...{in_env[-4:]}. Filled in for you."
+        else:
+            now = "not set"
+        say(f"\n  {number} of {total}  {option.title}\n"
+            f"          Turns on: {option.turns_on}\n"
+            f"          Get one:  {option.get_it}\n"
+            f"          Now:      {now}")
+        answer = ask(f"         {option.label}: ", "", True).strip()
+        if answer == "-":
+            changes[option.env] = ""
+            say("          removed")
+        elif answer:
+            changes[option.env] = answer
+            warning = key_warning(option.env, answer)
+            say(f"          saved, ends in ...{answer[-4:]}" + (f"\n          {warning}" if warning else ""))
+        elif not (in_file or in_env):
+            say("          skipped")
+
+    if changes:
+        update_env_file(home / ".env", changes)
+    final = {**saved, **changes}
+    say(f"\n  Keys saved to {home / '.env'}, readable only by you." if changes else "\n  No keys changed.")
+    for option in KEY_OPTIONS:
+        say(f"    {'on ' if final.get(option.env) else 'off'}   {option.title}")
+    say("  Add or change a key any time with: greg setup --keys")
+
+    plan = home / "setup-plan"
+    preset = read_plan(plan).get("PRESET", "") if plan.is_file() else ""
+    if preset == "cloud" and not final.get("NVIDIA_API_KEY"):
+        say(f"  The cloud preset runs on Nvidia. Greg cannot talk until NVIDIA_API_KEY is in {home / '.env'}.")
+    return {name: ("set" if value else "removed") for name, value in changes.items()}

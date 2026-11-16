@@ -121,7 +121,7 @@ async def test_missing_voice_is_marked_optional_and_does_not_fail_the_checkup(li
     out = io.StringIO()
     required = [c for c in checks if c["part"] in ("config", "memory", "about me", "model: fake", "voice out")]
     assert show_doctor(Console(file=out, width=200), required) is True
-    assert "install.sh" in out.getvalue()  # the fix it names
+    assert "setup.sh" in out.getvalue()  # the fix it names
 
 
 async def test_the_checkup_says_so_when_no_model_is_set_up(live, settings):

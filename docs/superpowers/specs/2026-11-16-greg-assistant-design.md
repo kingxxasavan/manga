@@ -124,7 +124,7 @@ greg/
   mcp_server.py    read only memory server for Claude Code
 tools/manifest.yaml       every outside tool server, pinned
 profile/about_me.example.yaml
-install.sh                one shot setup, opens the setup window
+setup.sh                one shot setup, opens the setup window
 scripts/greg.service      systemd unit
 tests/
 ```
@@ -194,7 +194,7 @@ deadlines, reminders, time and math, memory tools.
 
 **From GitHub, through MCP:** `tools/manifest.yaml` lists each server with its
 source repo, how to launch it, a pinned version, the keys it needs, a risk tier
-and an on or off switch. `install.sh` pulls them onto the server. The
+and an on or off switch. `setup.sh` pulls them onto the server. The
 starting set is the maintained reference servers (filesystem, git, fetch,
 sequential thinking, time), the GitHub server, a browser automation server, a
 library docs server, and school and research ones (papers, Wikipedia, video
@@ -364,7 +364,7 @@ Each step leaves something that runs and is tested.
 
 ## Third pass: installer and setup window
 
-1. `install.sh` at the top of the repo installs everything in six steps and can
+1. `setup.sh` at the top of the repo installs everything in six steps and can
    be run again safely. `--yes` asks nothing.
 2. `greg setup` is the setup window: preset (max, balanced, light, cloud, with
    the best fit for the machine marked), keys with hidden input and auto fill
@@ -376,3 +376,13 @@ Each step leaves something that runs and is tested.
    verified, and tool servers prefer it.
 5. `greg stop` stops the server. A switch turns the outside tool servers off.
 6. Three tool servers that did not start in a test run are off by default.
+
+## Fourth pass: setup.sh and keys last
+
+1. The installer is `setup.sh` in the top folder (`bash setup.sh`, and plain
+   `bash setup` works too).
+2. Order changed on the owner's request: choices, then every download, then the
+   keys. Each option that needs a key is asked about on its own with what it
+   turns on and where to get one. `greg setup --keys` runs just that step.
+3. Keys typed ahead during the downloads are thrown away before the key step,
+   so a stray Enter cannot skip the first question.

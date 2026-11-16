@@ -18,7 +18,7 @@ def audio_ready() -> tuple[bool, str]:
 
         devices = sd.query_devices()
     except ImportError:
-        return False, "Voice is not installed on this machine. Run ./install.sh and say yes to voice."
+        return False, "Voice is not installed on this machine. Run bash setup.sh and say yes to voice."
     except OSError as e:
         if "portaudio" in str(e).lower():
             return False, "The audio library is missing on this machine. Install it with: sudo apt install libportaudio2"

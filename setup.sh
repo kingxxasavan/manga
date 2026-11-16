@@ -1,24 +1,27 @@
 #!/usr/bin/env bash
 # Installs Greg on a Linux server, start to finish. Safe to run again.
+# Run it from the folder you cloned:
 #
-#   ./install.sh                  setup window, then install what you picked
-#   ./install.sh --yes            ask nothing: best preset for this machine,
+#   bash setup.sh                 pick a preset, install, then enter your keys
+#   bash setup.sh --yes           ask nothing: best preset for this machine,
 #                                 keys taken from your environment
-#   ./install.sh --preset max     max, balanced, light or cloud
-#   ./install.sh --no-setup       skip the window, install your last choices
-#   ./install.sh --skip-models    do not download local models this time
-#   ./install.sh --skip-tools     do not download the tool servers this time
+#   bash setup.sh --preset max    max, balanced, light or cloud
+#   bash setup.sh --no-setup      skip the questions, install your last choices
+#   bash setup.sh --skip-models   do not download local models this time
+#   bash setup.sh --skip-tools    do not download the tool servers this time
+#   bash setup.sh --skip-keys     do not ask for keys this time
 #
-# Keys are typed into the setup window (hidden) or picked up from your
-# environment, for example:
-#   NVIDIA_API_KEY=nvapi-... ANTHROPIC_API_KEY=sk-ant-... ./install.sh --yes
+# Order: your choices first, then everything downloads, then the keys are asked
+# for one option at a time (typing is hidden, Enter skips). Keys already in
+# your environment are filled in for you, for example:
+#   NVIDIA_API_KEY=nvapi-... ANTHROPIC_API_KEY=sk-ant-... bash setup.sh --yes
 # They end up in ~/.greg/.env, readable only by you. Never pass a key as an
 # argument: arguments are saved in your shell history.
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
-YES=0; PRESET=""; RUN_SETUP=1; SKIP_MODELS=0; SKIP_TOOLS=0
+YES=0; PRESET=""; RUN_SETUP=1; SKIP_MODELS=0; SKIP_TOOLS=0; SKIP_KEYS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -y|--yes) YES=1 ;;
@@ -27,7 +30,8 @@ while [ $# -gt 0 ]; do
     --no-setup) RUN_SETUP=0 ;;
     --skip-models) SKIP_MODELS=1 ;;
     --skip-tools) SKIP_TOOLS=1 ;;
-    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --skip-keys) SKIP_KEYS=1 ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1 (try --help)" >&2; exit 2 ;;
   esac
   shift
@@ -49,7 +53,7 @@ die()  { printf '\n%s%s%s\n' "$RED" "$*" "$OFF" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # ---------------------------------------------------------------------------
-step "1 of 6  Basics"
+step "1 of 7  Basics"
 [ "$(uname -s)" = "Linux" ] || warn "This script is written for Linux. On $(uname -s) some steps may not work."
 have curl || die "curl is needed and is not installed. Install it with your package manager and run this again."
 
@@ -70,7 +74,7 @@ mkdir -p "$GREG_HOME_DIR"
 chmod 700 "$GREG_HOME_DIR"
 
 # ---------------------------------------------------------------------------
-step "2 of 6  Setup"
+step "2 of 7  Your choices"
 if [ "$RUN_SETUP" = 1 ]; then
   setup_args=(--from-installer)
   [ "$YES" = 1 ] && setup_args+=(--yes)
@@ -86,7 +90,7 @@ else
 fi
 
 PLAN_FILE="$GREG_HOME_DIR/setup-plan"
-[ -f "$PLAN_FILE" ] || die "No saved choices found. Run ./install.sh without --no-setup first."
+[ -f "$PLAN_FILE" ] || die "No saved choices found. Run: bash setup.sh"
 PLAN_PRESET=""; PLAN_INSTALL_OLLAMA=0; PLAN_PULL_MODELS=""; PLAN_INSTALL_NODE=0
 PLAN_INSTALL_CLAUDE=0; PLAN_INSTALL_VOICE=0; PLAN_SYNC_TOOLS=0; PLAN_ENABLE_SERVICE=0
 # The plan is read line by line and never run as code. Only known names with
@@ -94,21 +98,21 @@ PLAN_INSTALL_CLAUDE=0; PLAN_INSTALL_VOICE=0; PLAN_SYNC_TOOLS=0; PLAN_ENABLE_SERV
 while IFS='=' read -r key value; do
   case "$key" in
     PRESET|INSTALL_OLLAMA|PULL_MODELS|INSTALL_NODE|INSTALL_CLAUDE|INSTALL_VOICE|SYNC_TOOLS|ENABLE_SERVICE)
-      [[ "$value" =~ ^[A-Za-z0-9_.:/\ -]*$ ]] || die "The saved plan looks damaged. Run ./install.sh again."
+      [[ "$value" =~ ^[A-Za-z0-9_.:/\ -]*$ ]] || die "The saved plan looks damaged. Run bash setup.sh again."
       printf -v "PLAN_$key" '%s' "$value" ;;
   esac
 done < "$PLAN_FILE"
 ok "preset: ${PLAN_PRESET:-unknown}"
 
 # ---------------------------------------------------------------------------
-step "3 of 6  Models"
+step "3 of 7  Models"
 if [ "$SKIP_MODELS" = 1 ]; then
   skip "models (--skip-models)"
 else
   if [ "$PLAN_INSTALL_OLLAMA" = 1 ] && ! have ollama; then
     echo "   installing Ollama (it may ask for your password)"
     if curl -fsSL https://ollama.com/install.sh | sh; then ok "Ollama installed"
-    else warn "Ollama did not install. Get it from https://ollama.com, then run ./install.sh --no-setup"; fi
+    else warn "Ollama did not install. Get it from https://ollama.com, then run bash setup.sh --no-setup"; fi
   fi
   if [ -n "$PLAN_PULL_MODELS" ]; then
     if have ollama; then
@@ -130,7 +134,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-step "4 of 6  Node and Claude Code"
+step "4 of 7  Node and Claude Code"
 install_node() {
   local arch base sums file tmp
   case "$(uname -m)" in
@@ -158,7 +162,7 @@ if [ -x "$NODE_DIR/bin/node" ] && [ "$(node_major "$NODE_DIR/bin/node")" -ge 24 
 elif [ "$PLAN_INSTALL_NODE" = 1 ]; then
   echo "   installing Node 24 into $NODE_DIR"
   if install_node; then ok "Node $("$NODE_DIR/bin/node" --version)"
-  else warn "Node did not install. Get Node 24 from https://nodejs.org, then run ./install.sh --no-setup"; fi
+  else warn "Node did not install. Get Node 24 from https://nodejs.org, then run bash setup.sh --no-setup"; fi
 else
   skip "Node"
 fi
@@ -188,7 +192,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-step "5 of 6  Voice, tools and background service"
+step "5 of 7  Voice and tool servers"
 if [ "$PLAN_INSTALL_VOICE" = 1 ]; then
   echo "   installing voice (this downloads speech models)"
   if uv tool install --quiet --force --editable ".[voice]" && uv tool install --quiet piper-tts; then
@@ -219,6 +223,25 @@ else
   skip "tool servers"
 fi
 
+# ---------------------------------------------------------------------------
+step "6 of 7  Keys"
+# Asked last on purpose: everything is downloaded, so this is the only thing
+# left that needs you. One option at a time, Enter skips.
+if [ "$SKIP_KEYS" = 1 ]; then
+  skip "keys (--skip-keys). Later: greg setup --keys"
+else
+  key_args=(--keys --from-installer)
+  [ "$YES" = 1 ] && key_args+=(--yes)
+  set +e
+  GREG_HOME="$GREG_HOME_DIR" greg setup "${key_args[@]}"
+  code=$?
+  set -e
+  if [ "$code" = 3 ]; then skip "keys cancelled. Later: greg setup --keys"
+  elif [ "$code" != 0 ]; then warn "The key step did not finish. Later: greg setup --keys"; fi
+fi
+
+# ---------------------------------------------------------------------------
+step "7 of 7  Background service and checkup"
 if [ "$PLAN_ENABLE_SERVICE" = 1 ]; then
   if have systemctl && systemctl --user show-environment >/dev/null 2>&1; then
     mkdir -p "$HOME/.config/systemd/user"
@@ -239,7 +262,6 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-step "6 of 6  Checkup"
 # If you skipped the tool servers, the checkup must not download them behind
 # your back, so it runs with them switched off.
 checkup_tools=1

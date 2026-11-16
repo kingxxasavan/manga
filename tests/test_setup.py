@@ -10,6 +10,7 @@ from greg.cli.setup import (
     key_warning,
     read_plan,
     recommend,
+    run_keys,
     run_wizard,
     update_env_file,
 )
@@ -37,9 +38,14 @@ class Script:
 
 
 def wizard(tmp_path, machine=LAPTOP, env=None, ask=None, **kw):
+    """The whole setup the way the installer runs it: choices first, then
+    (after the downloads would have happened) the keys."""
     home = tmp_path / "greghome"
     said = []
-    result = run_wizard(home, env or {}, machine, ask or Script(), said.append, **kw)
+    ask = ask or Script()
+    result = run_wizard(home, env or {}, machine, ask, said.append, **kw)
+    if not result.cancelled:
+        run_keys(home, env or {}, ask, said.append, yes=kw.get("yes", False))
     return home, result, "\n".join(said)
 
 
@@ -176,13 +182,51 @@ def test_a_dash_removes_a_saved_key(tmp_path):
     assert "NVIDIA_API_KEY" not in (home / ".env").read_text()
 
 
-def test_tool_keys_are_only_asked_for_when_wanted(tmp_path):
-    quiet = Script()
-    wizard(tmp_path / "a", ask=quiet)
-    assert not any("notion" in q.lower() for q, _ in quiet.asked)
-    curious = Script(extra_tools="y", notion="ntn_abc123456789")
-    home, _, _ = wizard(tmp_path / "b", ask=curious)
+def test_every_option_that_needs_a_key_is_asked_about_on_its_own(tmp_path):
+    ask = Script(notion="ntn_abc123456789")
+    home, _, shown = wizard(tmp_path, ask=ask)
+    asked = [q for q, secret in ask.asked if secret]
+    for option in ("Nvidia", "Anthropic", "GitHub", "Notion", "Brave", "Tavily", "Firecrawl", "Exa"):
+        assert sum(option in q for q in asked) == 1, option
     assert "NOTION_TOKEN=ntn_abc123456789" in (home / ".env").read_text()
+    assert "1 of 8" in shown and "8 of 8" in shown
+
+
+def test_the_choices_step_never_asks_for_a_key(tmp_path):
+    ask = Script()
+    home = tmp_path / "greghome"
+    run_wizard(home, {"NVIDIA_API_KEY": "nvapi-fromenv00001"}, LAPTOP, ask, lambda text: None)
+    assert not any(secret for _, secret in ask.asked)
+    assert (home / "greg.toml").exists() and (home / "setup-plan").exists()
+    assert not (home / ".env").exists()  # keys come later, after the downloads
+
+
+def test_keys_can_be_asked_later_on_their_own(tmp_path):
+    home = tmp_path / "greghome"
+    run_wizard(home, {}, LAPTOP, Script(), lambda text: None)
+    said = []
+    changed = run_keys(home, {}, Script(nvidia="nvapi-secretsecret1234", exa="exa-key-0123456789"), said.append)
+    env = (home / ".env").read_text()
+    assert "NVIDIA_API_KEY=nvapi-secretsecret1234" in env and "EXA_API_KEY=exa-key-0123456789" in env
+    assert sorted(changed) == ["EXA_API_KEY", "NVIDIA_API_KEY"]
+
+
+def test_each_key_question_says_what_it_turns_on_and_where_to_get_it(tmp_path):
+    _, _, shown = wizard(tmp_path)
+    assert "build.nvidia.com" in shown and "console.anthropic.com" in shown and "github.com/settings/tokens" in shown
+
+
+def test_the_key_step_ends_with_what_is_on_and_what_is_off(tmp_path):
+    _, _, shown = wizard(tmp_path, ask=Script(nvidia="nvapi-secretsecret1234"))
+    tail = shown[shown.rindex("Keys saved"):]
+    assert "on" in tail and "Nvidia" in tail and "off" in tail and "Notion" in tail
+
+
+def test_running_the_key_step_again_changes_nothing_when_everything_is_skipped(tmp_path):
+    home, _, _ = wizard(tmp_path, ask=Script(nvidia="nvapi-secretsecret1234"))
+    before = (home / ".env").read_text()
+    assert run_keys(home, {}, Script(), lambda text: None) == {}
+    assert (home / ".env").read_text() == before
 
 
 def test_choosing_remote_access_makes_a_token_and_opens_the_server(tmp_path):

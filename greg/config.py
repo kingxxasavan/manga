@@ -138,7 +138,7 @@ class Settings:
             return []
         waiting = [p.api_key_env for p in self.providers if p.api_key_env]
         hint = f"Add {' or '.join(waiting)} to your .env" if waiting else "Add a provider in greg.toml"
-        return [f"No model is set up yet, so Greg cannot answer. {hint}, or run ./install.sh again."]
+        return [f"No model is set up yet, so Greg cannot answer. {hint}, or run bash setup.sh again."]
 
 
 def _provider(raw: Mapping, env: Mapping[str, str]) -> Provider:

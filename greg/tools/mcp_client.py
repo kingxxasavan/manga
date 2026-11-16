@@ -88,7 +88,7 @@ def _fill(value: str, settings: Settings) -> str:
 
 
 def node_dir() -> Path:
-    """Where install.sh puts its own Node when the system one is missing or too old."""
+    """Where setup.sh puts its own Node when the system one is missing or too old."""
     return Path.home() / ".local" / "share" / "greg" / "node" / "bin"
 
 

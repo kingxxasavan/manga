@@ -10,50 +10,57 @@ Built for one person, for school, work and talking through projects.
 
 ## Set it up
 
-On the server (Linux):
+On the server (Linux), clone it and run the setup from that folder:
 
 ```bash
 git clone <this repo> greg && cd greg
-./install.sh
+bash setup.sh
 ```
 
-That installs Greg and opens the setup window. Four short steps, and Enter always
-takes the suggestion or skips:
+(`bash setup` works too.) It goes in this order, so you answer a few quick
+questions, walk away while it downloads, and only get asked for keys at the end:
 
-1. **Preset.** It looks at your machine and marks the best fit.
+1. **Your choices.** Three short windows, Enter always takes the suggestion.
+   - **Preset.** It looks at your machine and marks the best fit.
 
-   | Preset | What you get |
-   |---|---|
-   | Max | Biggest local models, widest memory, voice on. Wants a 16 GB GPU. |
-   | Balanced | Good local models for an 8 GB GPU, Nvidia as backup. |
-   | Light | Small local models for a machine with no GPU. |
-   | Cloud | No local model. Everything on Nvidia's hosted models. |
+     | Preset | What you get |
+     |---|---|
+     | Max | Biggest local models, widest memory, voice on. Wants a 16 GB GPU. |
+     | Balanced | Good local models for an 8 GB GPU, Nvidia as backup. |
+     | Light | Small local models for a machine with no GPU. |
+     | Cloud | No local model. Everything on Nvidia's hosted models. |
 
-2. **Keys.** Paste and press Enter, typing stays hidden. A key already in your
-   environment is filled in for you. Enter skips or keeps, a single `-` removes.
-3. **Options.** Name, voice, reaching it from other machines (makes the token
-   for you), running in the background.
-4. **What to install.** Ollama and the models, Node, Claude Code, the tool
-   servers. Say n to skip any. What is already there is not offered again.
+   - **Options.** Name, voice, reaching it from other machines (makes the token
+     for you), running in the background.
+   - **What to install.** Ollama and the models, Node, Claude Code, the tool
+     servers. Say n to skip any. What is already there is not offered again.
 
-Nothing is saved until you say yes on the summary. Then the script installs what
-you picked and finishes with a checkup.
+   Nothing is saved until you say yes on the summary.
+2. **Everything downloads.** Models, Node, Claude Code, voice, tool servers.
+3. **Keys, one option at a time.** For each thing that needs a key it says what
+   the key turns on and where to get one, then asks for it by itself:
+   Nvidia, Claude, GitHub, Notion, Brave, Tavily, Firecrawl, Exa. Paste and press
+   Enter, typing stays hidden. Enter alone skips that option. A key already in
+   your environment is filled in for you. A single `-` removes a saved one.
+4. **Checkup.** `greg doctor` runs and tells you what works.
 
 ```bash
-./install.sh --yes               # ask nothing: best preset, keys from your environment
-./install.sh --preset cloud      # pick the preset up front
-./install.sh --no-setup          # skip the window, install your last choices again
-./install.sh --skip-models       # no model downloads this time
-./install.sh --skip-tools        # no tool server downloads this time
-greg setup                       # just the window, to change settings later
-greg stop                        # restart is: stop, then open the chat again
+bash setup.sh --yes               # ask nothing: best preset, keys from your environment
+bash setup.sh --preset cloud      # pick the preset up front
+bash setup.sh --no-setup          # skip the questions, install your last choices again
+bash setup.sh --skip-models       # no model downloads this time
+bash setup.sh --skip-tools        # no tool server downloads this time
+bash setup.sh --skip-keys         # do not ask for keys this time
+greg setup --keys                 # only the keys, any time later
+greg setup                        # redo the choices and the keys
+greg stop                         # restart is: stop, then open the chat again
 ```
 
 Hands free, with keys from the environment (never pass a key as an argument, those
 land in your shell history):
 
 ```bash
-NVIDIA_API_KEY=nvapi-... ANTHROPIC_API_KEY=sk-ant-... ./install.sh --yes
+NVIDIA_API_KEY=nvapi-... ANTHROPIC_API_KEY=sk-ant-... bash setup.sh --yes
 ```
 
 Keys are saved to `~/.greg/.env`, readable only by you. Settings go to
@@ -297,7 +304,7 @@ Keys go in `.env` (see `.env.example`), never in `greg.toml`.
 
 ```bash
 uv sync
-uv run pytest        # 279 tests
+uv run pytest        # 284 tests
 uv run ruff check greg tests
 ```
 
@@ -324,7 +331,7 @@ Not checked there, so check with `greg doctor` on your server:
    of what you say, so run `greg train` once on your server.
 4. A real microphone.
 5. Installing Ollama, pulling models, voice and the background service. The rest
-   of `install.sh` was run for real in a throwaway home folder, including the
+   of `setup.sh` was run for real in a throwaway home folder, including the
    Node 24 download.
 
 ## Layout

@@ -118,4 +118,4 @@ def test_no_voice_packages_at_all_points_at_the_installer(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", missing)
     ok, why = audio_ready()
-    assert not ok and "install.sh" in why
+    assert not ok and "setup.sh" in why

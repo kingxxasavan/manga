@@ -133,11 +133,21 @@ def cmd_serve(settings: Settings, args) -> None:
 
 def cmd_setup(settings: Settings, args) -> None:
     """The setup window. Exit code 3 means the owner cancelled."""
-    from greg.cli.setup import detect_machine, run_wizard
+    from greg.cli.setup import detect_machine, run_keys, run_wizard
 
     interactive = sys.stdin.isatty() and not args.yes
     if not interactive and not args.yes:
         console.print(" No terminal to ask questions on, so the suggested choices are used.", highlight=False)
+
+    if interactive:
+        # Keys pressed while things were downloading are still waiting in the
+        # terminal. Throw them away, or a stray Enter would skip the first question.
+        try:
+            import termios
+
+            termios.tcflush(sys.stdin, termios.TCIFLUSH)
+        except (ImportError, OSError):
+            pass
 
     def ask(question: str, default: str = "", secret: bool = False) -> str:
         from prompt_toolkit import prompt
@@ -147,19 +157,24 @@ def cmd_setup(settings: Settings, args) -> None:
     def say(text: str) -> None:
         console.print(text, markup=False, highlight=False)
 
+    env = dict(settings.env)
     try:
-        result = run_wizard(
-            settings.home, dict(settings.env), detect_machine(), ask, say, preset=args.preset, yes=not interactive
-        )
+        if not args.keys:
+            result = run_wizard(settings.home, env, detect_machine(), ask, say, preset=args.preset, yes=not interactive)
+            if result.cancelled:
+                sys.exit(3)
+        # The installer asks for keys in a later step, once everything is downloaded.
+        if args.keys or not args.from_installer:
+            run_keys(settings.home, env, ask, say, yes=not interactive)
     except ValueError as e:
         sys.exit(str(e))
     except (KeyboardInterrupt, EOFError):
-        console.print("\n Cancelled. Nothing was changed.")
+        console.print("\n Cancelled. Anything not confirmed yet was left unchanged.")
         sys.exit(3)
-    if result.cancelled:
-        sys.exit(3)
-    if not args.from_installer:
-        say("  To install what you picked, run: ./install.sh --no-setup")
+    if not args.from_installer and not args.keys:
+        say("  To install what you picked, run: bash setup.sh --no-setup")
+    elif args.keys and not args.from_installer:
+        say("  Run `greg stop` so the next chat starts with the new keys.")
 
 
 async def cmd_chat(settings: Settings, args) -> None:
@@ -332,6 +347,7 @@ def main() -> None:
     setup = sub.add_parser("setup", help="the setup window: preset, keys, options")
     setup.add_argument("--preset", help="max, balanced, light or cloud")
     setup.add_argument("--yes", "-y", action="store_true", help="ask nothing, take every suggestion")
+    setup.add_argument("--keys", action="store_true", help="only the keys, one option at a time")
     setup.add_argument("--from-installer", action="store_true", help=argparse.SUPPRESS)
     ask = sub.add_parser("ask", help="one question, one answer")
     ask.add_argument("text", nargs="+")

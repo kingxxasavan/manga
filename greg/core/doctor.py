@@ -31,7 +31,7 @@ async def doctor(greg) -> list[dict]:
     out: list[dict] = []
 
     problems = settings.problems() + settings.warnings()
-    out.append(check("config", not problems, "; ".join(problems) or "ok", "see .env.example and greg.toml.example"))
+    out.append(check("config", not problems, "; ".join(problems) or "ok", "run `greg setup --keys` for keys, or `greg setup` to redo the settings"))
 
     for provider in await greg.router.status():
         name = f"model: {provider['name']}"
@@ -67,7 +67,7 @@ async def doctor(greg) -> list[dict]:
 
     node = await _version("node", tool_path())
     major = int(re.search(r"v?(\d+)", node).group(1)) if node and re.search(r"v?(\d+)", node) else 0
-    out.append(check("node", major >= 24, node or "not installed", "run ./install.sh again and say yes to Node, the npm tool servers need version 24 or newer"))
+    out.append(check("node", major >= 24, node or "not installed", "run bash setup.sh again and say yes to Node, the npm tool servers need version 24 or newer"))
     uvx = shutil.which("uvx")
     out.append(check("uv", bool(uvx), uvx or "not installed", "install uv, the Python tool servers are run with uvx"))
 
@@ -85,7 +85,7 @@ async def doctor(greg) -> list[dict]:
             out.append(check(f"tool: {name}", False, info.get("error", state), "run `greg tools sync` to see the full error"))
 
     whisper = importlib.util.find_spec("faster_whisper") is not None
-    out.append(check("voice in", whisper, "speech to text ready" if whisper else "faster-whisper not installed", "./install.sh and say yes to voice", optional=True))
+    out.append(check("voice in", whisper, "speech to text ready" if whisper else "faster-whisper not installed", "bash setup.sh and say yes to voice", optional=True))
     piper = shutil.which(settings.piper_bin)
-    out.append(check("voice out", bool(piper), piper or "piper not installed", "./install.sh and say yes to voice", optional=True))
+    out.append(check("voice out", bool(piper), piper or "piper not installed", "bash setup.sh and say yes to voice", optional=True))
     return out
