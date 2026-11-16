@@ -1,0 +1,103 @@
+# Training pack: Greg gets talked to the way its owner talks, then is checked.
+#
+#   greg train             practice run on a throwaway memory, with your real model
+#   greg train --keep      same teaching, written to Greg's real memory
+#   greg train --offline   no model needed. Checks storage, recall, typos and
+#                          tool picking, not the model's own judgment.
+#
+# teach     things the owner really said they want. Safe to keep.
+# practice  made up sample facts, used to test recall. Never kept.
+# probes    questions asked afterwards, typed the sloppy way on purpose.
+#
+# learns      words that must show up in a memory afterwards. a|b means either.
+# reinforces  a memory that must get more sure, without a second copy appearing.
+# gone        words no live memory may contain any more.
+# offline     what a good model would save. Only used by --offline.
+
+teach:
+  - say: ok so when you talk to me dont use any dashes at all and keep it less formal, some grammer mistakes is fine i dont care about that
+    learns: ["dash", "formal|casual|relaxed"]
+    offline:
+      - {op: add, kind: lesson, text: "Never use dashes when writing to them"}
+      - {op: add, kind: lesson, text: "Keep replies casual and less formal, small grammar mistakes are fine"}
+
+  - say: im gonna use you every day for school and work and also just to talk thru random projects i come up with
+    learns: ["school", "project"]
+    offline:
+      - {op: add, kind: fact, importance: 0.8, text: "Uses the assistant every day for school, work and talking through random projects"}
+
+  - say: typing is the main way i talk to you, voice is only the backup for when i cant type
+    learns: ["voice"]
+    offline:
+      - {op: add, kind: preference, text: "Typing is the main way they talk to the assistant, voice is only the backup"}
+
+  - say: when i want code made send it to claude first, and if the usage is full use your own model plus github to make the best code you can
+    learns: ["claude"]
+    offline:
+      - {op: add, kind: preference, text: "For code, use Claude first. When Claude usage is full, use the own model plus GitHub to write the best code possible"}
+
+  - say: dont ask me a bunch of questions before you start, just get to bulding and if somethings unclear make the call and tell me after
+    learns: ["question|ask"]
+    offline:
+      - {op: add, kind: lesson, text: "Do not ask lots of questions before starting. Just build, make the call when something is unclear, and report after"}
+
+  - say: i always want the most elite version of whatever we make so max it out, dont hand me the basic one
+    learns: ["elite|best|max|top|highest"]
+    offline:
+      - {op: add, kind: preference, importance: 0.8, text: "Always wants the most elite, maxed out version of anything made, never the basic one"}
+
+  - say: you run on my own server with ollama or nvidia and you got a sql memory that keeps learning about me
+    learns: ["ollama|nvidia|server"]
+    offline:
+      - {op: add, kind: fact, text: "Runs their assistant on their own server with Ollama or Nvidia and a SQL memory that keeps learning"}
+
+  - say: and like i said no dashes ever when you write to me
+    reinforces: ["dash"]
+    offline:
+      - {op: add, kind: lesson, text: "never use dashes when writing to them."}
+
+practice:
+  - say: my chemistry lab writeup is due thursday and i got a history essay due next friday
+    learns: ["chem", "history essay"]
+    offline:
+      - {op: add, kind: task, text: "Chemistry lab writeup is due Thursday"}
+      - {op: add, kind: task, text: "History essay is due next Friday"}
+
+  - say: i work at the bike shop on tuesdays and saturdays
+    learns: ["bike shop"]
+    offline:
+      - {op: add, kind: fact, text: "Works at the bike shop on Tuesdays and Saturdays"}
+
+  - say: im building a discord bot in python for my friends server
+    learns: ["discord"]
+    offline:
+      - {op: add, kind: project, text: "Building a Discord bot in Python for a friend's server"}
+
+  - say: actually the history essay got moved its due monday now not friday
+    learns: ["history essay monday"]
+    gone: ["next friday"]
+    offline:
+      - {op: replace, match: "History essay", text: "History essay is due Monday"}
+
+probes:
+  # Standing instructions must be in front of the model whatever the topic is.
+  - {ask: write me a paragraph about dogs, prompt: "dash"}
+  - {ask: whats the capital of france, prompt: "question|ask"}
+  - {ask: help me plan my week, prompt: "formal|casual|relaxed"}
+
+  # Recall, typed fast and wrong.
+  - {ask: how do you write code for me when claude is out, recall: "claude"}
+  - {ask: whens my chemestry lab due, recall: "chem", practice: true}
+  - {ask: when is the histroy essay due, recall: "monday", practice: true}
+  - {ask: what days do i work at the bike shop, recall: "tuesday", practice: true}
+  - {ask: hows my discrod bot going, recall: "discord", practice: true}
+  - {ask: whats up with chem, recall: "chem", practice: true}
+
+  # The right tool for a sloppy ask.
+  - {ask: serach the web for cheap gpus, tool: web_search}
+  - {ask: calculater 15 percent of 240, tool: calculate}
+  - {ask: whats due this week, tool: list_items}
+  - {ask: remind me to email my boss tmrw, tool: add_item}
+  - {ask: make me a python script that renames files, tool: code_task}
+  - {ask: find a github repo for discord bots, tool: github_search_repos}
+  - {ask: run ls in the terminal, tool: run_shell}

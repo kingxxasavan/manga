@@ -1,146 +1,301 @@
-# Craftline
+# Greg
 
-A made to order services site. A visitor picks a service and answers a few questions
-about how complex the job is and the level of finish they want. No prices are shown
-until the end, where they get an estimated price range and send the request. The
-owner confirms the final price from `/admin`, the customer pays it through Stripe
-Checkout, and follows the order on a private link.
+A personal AI assistant that lives on your own server. You type to it in a simple
+terminal chat, voice is the backup. It runs on Ollama or Nvidia, remembers what it
+learns about you in a SQL database, carries a big set of tools pulled from GitHub,
+and writes code through Claude, switching to its own coder when Claude usage runs
+out.
 
-Next.js, TypeScript, Tailwind CSS, Postgres, Stripe.
+Built for one person, for school, work and talking through projects.
 
-## Run it locally
+## Set it up
+
+On the server (Linux):
 
 ```bash
-npm install
-cp .env.example .env.local   # fill in what you have, everything is optional locally
-npm run dev                  # http://localhost:3000
-npm test
-npm run lint
-npm run build
+git clone <this repo> greg && cd greg
+./scripts/install.sh            # add --voice if you want voice
 ```
 
-With no `DATABASE_URL`, local development uses PGlite (Postgres running inside
-Node, data in `.data/`), so nothing needs installing. Production refuses to start
-orders without a real database, because that data would be lost on every restart.
+Then:
 
-## Going live
+```bash
+greg doctor      # one line per part: working, or what is missing and the fix
+greg aboutme     # tell Greg who you are
+greg train       # practice run: talk to it your way and see what it learns
+greg             # chat
+```
 
-Set these environment variables on the host (see `.env.example`):
+You need at least one model source:
 
-| Variable | Needed for |
+| | How |
 |---|---|
-| `DATABASE_URL` | Saving orders. Any Postgres works. The table is created on first use. |
-| `STRIPE_SECRET_KEY` | Taking payments. Start with a test key. |
-| `STRIPE_WEBHOOK_SECRET` | Marking orders paid even if the customer closes the tab. |
-| `ADMIN_PASSWORD` | Logging in at `/admin`. 12 characters or more. |
+| **Ollama** (local, private) | Install from ollama.com. The install script pulls the default models. |
+| **Nvidia** (hosted) | Get a key at build.nvidia.com and put `NVIDIA_API_KEY=...` in `~/.greg/.env`. |
 
-Stripe webhook: in the Stripe dashboard add an endpoint for
-`https://YOUR-DOMAIN/api/stripe/webhook` with the events
-`checkout.session.completed` and `checkout.session.async_payment_succeeded`, then
-copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+With both, Ollama is tried first and Nvidia takes over if it is down, and back again.
 
-## How an order moves
+Ollama's default context window is small, and when it overflows the model quietly
+loses its instructions. If you have the memory for it, start Ollama with a bigger
+one, for example `OLLAMA_CONTEXT_LENGTH=16384 ollama serve`. Greg also caps how
+much history it sends (`history_chars` in `greg.toml`).
 
-1. Customer answers the questions and sees an estimate range. Nothing is charged.
-   (The flat price Surprise me option is the exception: it is paid right away.)
-2. The request lands in `/admin` with that estimate. You set the final price
-   (the form starts on the middle of the estimate) and can add a note.
-3. The customer opens their order link, sees the final price and pays on Stripe.
-4. You move the order through Received, In progress, Draft ready and Done, and
-   add a delivery link.
+For code creation through Claude: `npm install -g @anthropic-ai/claude-code`, then
+either put `ANTHROPIC_API_KEY=...` in `~/.greg/.env` or run `claude` once to log in.
+Without it Greg still codes, using its own model.
 
-The site sends no emails yet. Each order in `/admin` has an "Email the customer
-their link" button that opens your own mail app with the link filled in.
+Other things the install script checks for: `uv` (it installs this), and Node 24 or
+newer for the npm tool servers.
 
-## Changing services and the estimate
+## Using it
 
-Everything sold lives in `src/lib/services.ts`: the services, their questions, and
-the amounts behind the estimate, in cents. Customers never see those amounts, only
-the range built from them. Shared `COMPLEXITY` and `LEVEL` questions multiply the
-basis. The range is 15 percent either side of the calculated amount, rounded to
-5 dollars (`estimateRange` in `src/lib/pricing.ts`).
+```
+ greg   ollama   memory 214   tools 162   mode school
+ ________________________________________________________________
 
-The amounts follow the launch pricing rules, and `npm test` fails if a change
-breaks one of them:
+ you   whats due this week
 
-1. every normal request estimates at or under $500
-2. bulk quantities (like 20 pages or 30 logos) and "very complex" jobs stay at or under $800
-3. only a full app or game, or a full book, may go above that
+ greg  Two things. The chem lab writeup is due Thursday and ...
+       used: list_items, 3 memories
+```
 
-`SHOW_SPREAD=1 npx vitest run tests/estimate-spread.test.ts --disable-console-intercept`
-prints the cheapest, middle and dearest estimate per service while you tune.
+| Command | What it does |
+|---|---|
+| `/mode school` | general, school, work or project |
+| `/memory [words]` | what Greg remembers, or search it |
+| `/remember <text>` | save something on purpose |
+| `/forget <id>` | delete a memory for real |
+| `/why` | which memories shaped the last reply |
+| `/code <what>` | build something |
+| `/tools` | tool servers and their state |
+| `/aboutme` | tell Greg about yourself, or update it |
+| `/voice` | voice on or off |
+| `/doctor` | check every part |
+| `/new` | fresh conversation (memory stays) |
+| `/quit` | leave |
 
-When the launch period ends, raise the amounts in `src/lib/services.ts`, loosen
-the two limits at the top of `tests/estimate-spread.test.ts` to match, and set
-`LAUNCH_PRICING` to `false` in `src/lib/site.ts` to drop the "Launch pricing" labels.
+Outside the chat: `greg ask "question"` for one answer in a script, `greg memory`,
+`greg tools list`, `greg tools sync`, `greg aboutme import file.yaml`, `greg train`.
 
-A question can be limited to certain answers with `showIf`, for example the
-citation style question only appears for essays and reports. Hidden questions are
-never asked, checked, stored or counted.
+## How the memory learns
 
-## The website designer
+Everything is in one SQLite file, `~/.greg/greg.db`.
 
-For websites the customer picks a layout, a color set, a text style and an image
-style, and a live preview redraws as they choose. Their choice is saved with the
-order and shown again on their order page and in `/admin`, so you can see exactly
-what to build.
+1. **Recall.** Before each reply Greg searches its memories by words and by
+   meaning, then ranks them by how sure it is, how important, and how recently and
+   often each one was useful. Your About Me is always included.
+2. **Learn.** After each exchange a small model looks at what you said and proposes
+   changes. Something new is added. Something said again makes Greg more sure.
+   Something that changed replaces the old memory, and the old one is kept as
+   history. When you correct Greg ("no, do it this way") that is saved as a lesson
+   and ranks above ordinary facts.
+3. **Upkeep.** Every hour: long conversations get summarized, duplicates are
+   merged, and memories nobody has needed for a month slowly drop in rank. Greg
+   never deletes a memory on its own. Only `/forget` deletes.
+4. **Tools too.** Greg tracks which tools work and which keep failing, and prefers
+   the ones that work.
+5. **Standing instructions are always on.** Anything you told Greg about how to
+   behave ("no dashes", "dont ask a bunch of questions") is sent with every
+   message, strongest first. It does not depend on a search finding it.
+6. **Typos are fine.** Recall and tool picking both guess what a misspelled word
+   meant ("chemestry assigment", "serach") and match shortened words ("chem").
+7. **It learns how you talk and think.** From your own messages Greg works out
+   your style (casual or formal, short or long, orders or questions) and tells
+   the model to answer to match. Once you have sent about 20 messages, the upkeep
+   also writes a short note on how you think and what you value, and keeps it up
+   to date. That note is a normal memory, so `/memory` shows it and `/forget`
+   removes it.
 
-The catalogue is `src/lib/templates.ts`: add a color set or a text style there and
-it appears in the builder. A new layout also needs its drawing added in
-`src/components/site-preview.tsx`. The look never changes the estimate.
+You stay in control with `/memory`, `/why`, `/remember` and `/forget`.
 
-The preview is a sketch drawn with shapes, not a real page, and the catalogue is
-hand made. Generating templates with an AI model would be a later addition and
-needs an API key.
+## Train it to talk like you
 
-## Surprise me
+`greg train` talks to Greg the way you talk (fast, no punctuation, misspelled, a
+few asks at once) and then checks what stuck. It uses `training/like_me.yaml`:
 
-Under "Something else" the customer can pick Surprise me: a flat $15 for something
-random. It is the one fixed price on the site (`fixed` on the option in
-`services.ts`), so it skips the estimate and goes straight to payment. Every other
-request still waits for you to confirm a price.
+1. **Teach.** Things you said you want: no dashes, casual, type first and voice as
+   backup, Claude first for code, build instead of asking questions, always the
+   maxed out version.
+2. **Practice.** Made up sample facts (a chem lab, a work shift) to test recall.
+   These are never kept.
+3. **Probes.** Sloppy questions asked afterwards.
 
-Site name, currency and the price limits are in `src/lib/site.ts`. A request whose
-basis is above `MAX_ORDER_CENTS` ($2,000) gets no automatic estimate, and no final
-price can be set outside $5 to $2,000.
+The report scores six things: what was learned, whether repeating something made
+Greg more sure without a second copy, whether a change replaced the old fact,
+whether a typo filled question recalled the right memory, whether your standing
+instructions reach the model on an unrelated topic, and whether the right tool was
+offered.
 
-## How money is kept safe
+```bash
+greg train             # practice on a throwaway memory with your real model
+greg train --keep      # the same teaching, written into Greg's real memory
+greg train --offline   # no model needed, checks everything around the model
+```
 
-- Nothing is charged when a request is sent, and a request cannot be paid until the
-  owner has set a final price. The only exception is a flat price option, whose
-  amount comes from the config file and never from the browser.
-- The estimate is calculated on the server from the answers, with the same function
-  the browser uses to show it. A number sent by the browser is never used.
-- An order becomes paid only when Stripe confirms it: through the signed webhook,
-  or by looking the Checkout Session up with the secret key when the customer returns.
-- Recording a payment is idempotent. A second payment for the same order, a payment
-  after cancellation, or an amount that differs from the final price is flagged on
-  the admin page instead of being dropped.
-- An open payment link is reused, and old links are expired when the price changes,
-  so a customer is not sent to pay twice or at an old price.
-- Card details never touch this site. Refunds are done in the Stripe dashboard.
+Edit the pack to add your own lines. Anything in `teach` is safe to keep, so only
+put true things there.
 
-## What is not built yet
+## About Me
 
-Customer accounts, messages and file uploads inside an order, email notifications,
-promo codes, referrals, reviews, and AI follow up questions. Customers reach their
-order through the private link shown after sending a request, so they need to keep
-it. Because the final price now arrives later, automatic emails are the most
-useful thing to add next.
+`greg aboutme` asks about you: name, age, where you live and move around, school
+and classes, work, schedule, projects, habits, goals, interests, people, tools, how
+you want to be talked to, and what to never do. Enter keeps an answer, a single `-`
+clears it, and lists use `;` between items.
 
-The wording on `/policies` is a draft. Read it and change it to match how you
-really work before taking real orders.
+Or fill in a file: copy `profile/about_me.example.yaml` to `profile/about_me.yaml`
+and run `greg aboutme import profile/about_me.yaml`. Any extra section you add to
+the file is kept too.
+
+Your answers are stored in `~/.greg/` on your server only. The filled in file is
+ignored by git.
+
+## Tools
+
+Three kinds.
+
+**Built in:** shell, Python, files, web search, page fetch, GitHub search and read,
+calculator, notes, todos, assignments, reminders, memory.
+
+**From GitHub:** `tools/manifest.yaml` lists 30 MCP servers with a pinned version
+each. 19 run with no setup: files, git, step by step thinking, time, calculator,
+page fetch, DuckDuckGo search, library docs, DeepWiki, Wikipedia, arXiv, paper
+search, YouTube transcripts, browser automation, file conversion, Word,
+PowerPoint, Excel and charts. 6 turn on when you add their key to `.env`: GitHub,
+Notion, Brave, Tavily, Firecrawl, Exa. 5 are listed but off until you flip
+`enabled`: Google Workspace, Chrome DevTools, Jupyter, Zotero, Desktop Commander.
+
+None of that code is copied into this repo. `greg tools sync` downloads each
+server at its pinned version and checks that it starts. To add a tool, add an
+entry to the manifest.
+
+**Code creation:** see below.
+
+A local model cannot handle hundreds of tool descriptions at once, so each turn
+Greg offers the model only the dozen that best fit your message. The model can ask
+for more with `find_tools`.
+
+### What runs without asking
+
+| Kind of tool | Behavior |
+|---|---|
+| Reading, searching, notes, math | runs |
+| File tools | run freely inside `~/greg/workspace`, ask outside it |
+| Shell, Python, code tasks, browser, anything that sends or deletes | always asks y or n |
+
+If nobody answers within five minutes the answer is no. You can loosen a single
+tool in `greg.toml` under `[permissions]`.
+
+Each tool server only receives the environment variables its manifest entry names.
+Your other keys are not shared with it.
+
+## Code creation
+
+Ask for something to be built, or use `/code`. Each project gets its own folder in
+`~/greg/workspace/`. You approve once per task, and that covers writing files and
+running commands inside that project folder.
+
+1. **Claude first.** Greg runs Claude Code in the project folder.
+2. **When Claude usage is full,** Greg notices (it reads what Claude reports, not
+   just the exit code), rests Claude until the reset time Claude gives, or 30
+   minutes when it gives none, and does the job with its own coder model. That
+   coder looks up reference code on GitHub and library docs, writes files, runs
+   them, and fixes what fails. It cannot write outside the project folder and
+   refuses sudo, pushing, and piping downloads into a shell.
+3. **Every result says who wrote it**, Claude or Greg's own coder, and why.
+
+The install script also registers `greg mcp` with Claude Code. It is a small read
+only server that lets Claude look up your About Me and your preferences while it
+writes your code.
+
+## Voice
+
+Install with `./scripts/install.sh --voice`. In the chat, `/voice` turns it on.
+Press Enter on an empty line to talk, Enter again to stop. What Greg heard shows
+as text, the reply streams as text and is read aloud.
+
+Speech to text (Whisper) and text to speech (Piper) both run on your server. No
+audio goes to an outside service. The microphone and speakers are the ones on the
+machine the `greg` chat runs on. Over a plain SSH session there are none, so Greg
+says so and stays in text.
+
+## Reaching Greg from another machine
+
+By default the server only listens on the server itself. To chat from a laptop:
+
+On the server, in `~/.greg/.env`:
+
+```
+GREG_HOST=0.0.0.0
+GREG_TOKEN=<long random string>
+```
+
+On the laptop, install the repo the same way and set:
+
+```
+GREG_URL=http://your-server:8765
+GREG_TOKEN=<the same string>
+```
+
+Greg refuses to listen beyond localhost without a token. The connection is plain
+HTTP, so use it on a network you trust or through a tunnel (Tailscale, SSH port
+forward).
+
+## Keep it running
+
+`scripts/greg.service` is a systemd user unit with the steps at the top of the
+file. Without it, the `greg` chat starts the server for you when it is not running.
+
+## Settings
+
+Copy `greg.toml.example` to `greg.toml` to change models, limits and permissions.
+Keys go in `.env` (see `.env.example`), never in `greg.toml`.
+
+## Development
+
+```bash
+uv sync
+uv run pytest        # 233 tests
+uv run ruff check greg tests
+```
+
+The tests use a scripted stand in for the model and a real SQLite database, a real
+HTTP server, a real MCP test server, and fake `claude` and `piper` programs.
+
+### What was and was not checked on the build machine
+
+Checked: the whole test suite, plus a real run of `greg serve`, `greg ask`,
+`greg doctor`, `greg aboutme` and the interactive chat against a stand in model
+server speaking the same API as Ollama. One real Claude Code run through Greg's
+own runner (it wrote and ran a file). `greg train --offline`, 32 of 32.
+
+Not checked there, so check with `greg doctor` on your server:
+
+1. A real Ollama or Nvidia model. The default model names are in
+   `greg.toml.example`. `greg doctor` tells you if one is missing.
+2. The outside tool servers. Every package name, pinned version and program name
+   was checked against npm and PyPI, but the servers themselves were not started.
+   `greg tools sync` does that.
+3. `greg train` with a real model. Offline mode proves the storage, recall and
+   tool picking. Only a real model shows how well the learn step pulls facts out
+   of what you say, so run `greg train` once on your server.
+4. A real microphone.
+5. `scripts/install.sh` as a whole.
 
 ## Layout
 
 ```
-src/lib/services.ts   what is sold, the questions and the estimate basis
-src/lib/templates.ts  website layouts, color sets, text styles and image styles
-src/lib/pricing.ts    answer validation and the estimate formula
-src/lib/orders.ts     order storage and status rules
-src/lib/payments.ts   everything that talks to Stripe
-src/lib/admin-auth.ts owner login
-src/app/actions.ts    server actions (order, pay, admin)
-src/app/              pages and the Stripe routes
-tests/                unit tests
+greg/config.py        settings
+greg/llm/             Ollama and Nvidia client, failover
+greg/memory/          SQLite store, ranking, learning, style, upkeep
+greg/core/            the chat loop, app wiring, doctor, training run
+greg/tools/           registry, picker, permissions, built ins, MCP client
+greg/coder/           Claude runner, limit detection, fallback coder
+greg/voice/           speech in and out
+greg/profile/         About Me
+greg/server/          HTTP API
+greg/cli/             the chat screen and the greg command
+greg/mcp_server.py    read only memory server for Claude Code
+tools/manifest.yaml   the outside tools, pinned
+training/like_me.yaml the training pack
+docs/                 the design
 ```

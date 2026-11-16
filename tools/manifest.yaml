@@ -1,0 +1,316 @@
+# Greg's outside tools. Each entry is an MCP server from GitHub.
+#
+# Nothing here is copied into this repo. `greg tools sync` (run by the install
+# script) downloads each one at the pinned version and checks that it starts.
+#
+# Fields:
+#   type      npm | pypi | http | command
+#   version   pinned on purpose. Bump it by hand after reading the changelog.
+#   risk      safe  = its tools just run
+#             write = runs freely on paths inside the workspace, asks outside it
+#             danger = always asks you first
+#             (tools a server marks as read only are always treated as safe)
+#   needs     env vars that must be in your .env. The server turns itself on
+#             once they are there.
+#   env       extra env vars passed to the server. Nothing else from your .env
+#             is shared with it.
+#   enabled   false = stays off until you flip it
+
+servers:
+  # ---- files, code and thinking -------------------------------------------
+  - name: files
+    about: Read, write, move and search files inside the workspace folder
+    type: npm
+    package: "@modelcontextprotocol/server-filesystem"
+    version: "2.3.0"
+    args: ["{workspace}"]
+    risk: write
+    source: https://github.com/modelcontextprotocol/servers
+    license: MIT
+
+  - name: git
+    about: Git status, diff, log, commit and branches for repos on the server
+    type: pypi
+    package: mcp-server-git
+    version: "2026.11.11"
+    risk: write
+    source: https://github.com/modelcontextprotocol/servers
+    license: MIT
+
+  - name: think
+    about: Step by step thinking scratchpad for hard problems
+    type: npm
+    package: "@modelcontextprotocol/server-sequential-thinking"
+    version: "2.1.1"
+    risk: safe
+    source: https://github.com/modelcontextprotocol/servers
+    license: MIT
+
+  - name: time
+    about: Current time and timezone conversion
+    type: pypi
+    package: mcp-server-time
+    version: "2026.11.11"
+    risk: safe
+    source: https://github.com/modelcontextprotocol/servers
+    license: MIT
+
+  - name: calc
+    about: Calculator for exact math
+    type: pypi
+    package: mcp-server-calculator
+    version: "0.2.1"
+    risk: safe
+    source: https://github.com/githejie/mcp-server-calculator
+    license: MIT
+
+  # ---- web and research ---------------------------------------------------
+  - name: fetch
+    about: Fetch a web page as clean markdown
+    type: pypi
+    package: mcp-server-fetch
+    version: "2026.11.11"
+    risk: safe
+    source: https://github.com/modelcontextprotocol/servers
+    license: MIT
+
+  - name: ddg
+    about: DuckDuckGo web search, no key needed
+    type: pypi
+    package: duckduckgo-mcp-server
+    version: "0.7.0"
+    risk: safe
+    source: https://github.com/nickclyde/duckduckgo-mcp-server
+    license: MIT
+
+  - name: docs
+    about: Up to date documentation and code examples for programming libraries (Context7)
+    type: npm
+    package: "@upstash/context7-mcp"
+    version: "4.7.1"
+    risk: safe
+    source: https://github.com/upstash/context7
+    license: MIT
+
+  - name: deepwiki
+    about: Ask questions about any public GitHub repository and read its generated docs
+    type: http
+    url: https://mcp.deepwiki.com/mcp
+    risk: safe
+    source: https://github.com/CognitionAI/deepwiki
+    license: hosted service
+
+  - name: wikipedia
+    about: Search and read Wikipedia articles
+    type: pypi
+    package: wikipedia-mcp
+    version: "2.0.1"
+    risk: safe
+    source: https://github.com/rudra-ravi/wikipedia-mcp
+    license: MIT
+
+  - name: arxiv
+    about: Search, download and read research papers from arXiv
+    type: pypi
+    package: arxiv-mcp-server
+    version: "0.8.2"
+    args: ["--storage-path", "{workspace}/papers"]
+    risk: safe
+    source: https://github.com/blazickjp/arxiv-mcp-server
+    license: Apache-2.0
+
+  - name: papers
+    about: Search academic papers across arXiv, PubMed, bioRxiv, Semantic Scholar and more
+    type: pypi
+    package: paper-search-mcp
+    version: "0.1.4"
+    risk: safe
+    source: https://github.com/openags/paper-search-mcp
+    license: MIT
+
+  - name: youtube
+    about: Get the transcript of a YouTube video, for lectures and tutorials
+    type: npm
+    package: "@kimtaeyoon83/mcp-server-youtube-transcript"
+    version: "0.1.1"
+    risk: safe
+    source: https://github.com/kimtaeyoon83/mcp-server-youtube-transcript
+    license: MIT
+
+  - name: browser
+    about: Drive a real web browser, click, type, fill forms and read pages (Playwright)
+    type: npm
+    package: "@playwright/mcp"
+    version: "0.0.85"
+    args: ["--headless", "--isolated"]
+    risk: danger
+    source: https://github.com/microsoft/playwright-mcp
+    license: Apache-2.0
+
+  # ---- documents for school and work --------------------------------------
+  - name: convert
+    about: Turn PDF, Word, PowerPoint, Excel, images and audio files into readable markdown
+    type: pypi
+    package: markitdown-mcp
+    version: "0.0.1a8"
+    risk: write
+    source: https://github.com/microsoft/markitdown
+    license: MIT
+
+  - name: word
+    about: Create and edit Word documents
+    type: pypi
+    package: office-word-mcp-server
+    version: "1.1.11"
+    bin: word_mcp_server
+    risk: write
+    source: https://github.com/GongRzhe/Office-Word-MCP-Server
+    license: MIT
+
+  - name: slides
+    about: Create and edit PowerPoint presentations
+    type: pypi
+    package: office-powerpoint-mcp-server
+    version: "2.0.7"
+    bin: ppt_mcp_server
+    risk: write
+    source: https://github.com/GongRzhe/Office-PowerPoint-MCP-Server
+    license: MIT
+
+  - name: excel
+    about: Create, read and edit Excel workbooks, formulas, charts and pivot tables
+    type: pypi
+    package: excel-mcp-server
+    version: "2.3.2"
+    args: ["stdio"]
+    risk: write
+    source: https://github.com/haris-musa/excel-mcp-server
+    license: MIT
+
+  - name: chart
+    about: Make charts and diagrams from data (bar, line, pie, flow, mind map and more)
+    type: npm
+    package: "@antv/mcp-server-chart"
+    version: "0.9.10"
+    risk: safe
+    source: https://github.com/antvis/mcp-server-chart
+    license: MIT
+
+  # ---- turn on by adding a key to .env ------------------------------------
+  - name: github
+    about: Full GitHub access, issues, pull requests, code search, actions
+    type: http
+    url: https://api.githubcopilot.com/mcp/
+    headers: {Authorization: "Bearer ${GITHUB_TOKEN}"}
+    needs: [GITHUB_TOKEN]
+    risk: danger
+    source: https://github.com/github/github-mcp-server
+    license: MIT
+
+  - name: notion
+    about: Read and write your Notion pages and databases
+    type: npm
+    package: "@notionhq/notion-mcp-server"
+    version: "2.6.1"
+    needs: [NOTION_TOKEN]
+    risk: danger
+    source: https://github.com/makenotion/notion-mcp-server
+    license: MIT
+
+  - name: brave
+    about: Brave web, news, image and video search
+    type: npm
+    package: "@brave/brave-search-mcp-server"
+    version: "2.1.4"
+    needs: [BRAVE_API_KEY]
+    risk: safe
+    source: https://github.com/brave/brave-search-mcp-server
+    license: MIT
+
+  - name: tavily
+    about: Tavily search and page extraction tuned for AI
+    type: npm
+    package: tavily-mcp
+    version: "0.2.22"
+    needs: [TAVILY_API_KEY]
+    risk: safe
+    source: https://github.com/tavily-ai/tavily-mcp
+    license: MIT
+
+  - name: firecrawl
+    about: Crawl and scrape whole websites into clean text
+    type: npm
+    package: firecrawl-mcp
+    version: "3.40.0"
+    needs: [FIRECRAWL_API_KEY]
+    risk: safe
+    source: https://github.com/firecrawl/firecrawl-mcp-server
+    license: MIT
+
+  - name: exa
+    about: Exa semantic web search and code context search
+    type: npm
+    package: exa-mcp-server
+    version: "3.4.3"
+    needs: [EXA_API_KEY]
+    risk: safe
+    source: https://github.com/exa-labs/exa-mcp-server
+    license: MIT
+
+  # ---- off until you turn them on -----------------------------------------
+  - name: google
+    about: Gmail, Calendar, Drive, Docs and Sheets. Needs a Google OAuth client, see its README.
+    type: pypi
+    package: workspace-mcp
+    version: "2.5.0"
+    env: [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, USER_GOOGLE_EMAIL]
+    needs: [GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET]
+    enabled: false
+    risk: danger
+    source: https://github.com/taylorwilsdon/google_workspace_mcp
+    license: MIT
+
+  - name: devtools
+    about: Chrome DevTools, inspect pages, network, console and performance
+    type: npm
+    package: chrome-devtools-mcp
+    version: "1.13.0"
+    args: ["--headless", "--isolated"]
+    enabled: false
+    risk: danger
+    source: https://github.com/ChromeDevTools/chrome-devtools-mcp
+    license: Apache-2.0
+
+  - name: jupyter
+    about: Work inside a running Jupyter notebook. Needs a Jupyter server you started.
+    type: pypi
+    package: jupyter-mcp-server
+    version: "2.2.5"
+    env: [JUPYTER_URL, JUPYTER_TOKEN]
+    needs: [JUPYTER_URL, JUPYTER_TOKEN]
+    enabled: false
+    risk: danger
+    source: https://github.com/datalayer/jupyter-mcp-server
+    license: BSD-3-Clause
+
+  - name: zotero
+    about: Search your Zotero research library
+    type: pypi
+    package: zotero-mcp
+    version: "0.3.1"
+    env: [ZOTERO_API_KEY, ZOTERO_LIBRARY_ID, ZOTERO_LOCAL]
+    needs: [ZOTERO_API_KEY, ZOTERO_LIBRARY_ID]
+    enabled: false
+    risk: safe
+    source: https://github.com/kujenga/zotero-mcp
+    license: MIT
+
+  - name: desktop
+    about: Desktop Commander, long running terminal sessions and process control
+    type: npm
+    package: "@wonderwhy-er/desktop-commander"
+    version: "0.3.3"
+    enabled: false
+    risk: danger
+    source: https://github.com/wonderwhy-er/DesktopCommanderMCP
+    license: MIT
