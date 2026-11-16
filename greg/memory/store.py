@@ -345,20 +345,29 @@ class Memory:
         self.db.commit()
         return cur.rowcount
 
-    def find_duplicate(self, text: str, vec: np.ndarray | None = None, model: str | None = None) -> int | None:
+    def find_duplicate(
+        self, text: str, vec: np.ndarray | None = None, model: str | None = None, exclude: int | None = None
+    ) -> int | None:
         """Id of a live memory that says the same thing, if there is one."""
         target = set(words(text))
         if not target:
             return None
         for row in self._fts(text, 8):
             other = set(words(row.text))
-            if other and len(target & other) / len(target | other) >= 0.8:
+            if row.id != exclude and other and len(target & other) / len(target | other) >= 0.8:
                 return row.id
         if vec is not None and model:
-            for memory_id, similarity in self._nearest(vec, model, 1):
-                if similarity >= 0.92:
+            for memory_id, similarity in self._nearest(vec, model, 2):
+                if memory_id != exclude and similarity >= 0.92:
                     return memory_id
         return None
+
+    def merge(self, weak_id: int, strong_id: int) -> None:
+        """Fold a duplicate into the stronger copy. The weak row is kept as history."""
+        self.db.execute("UPDATE memories SET superseded_by=? WHERE id=?", (strong_id, weak_id))
+        self.db.commit()
+        self._vec_cache.clear()
+        self.reinforce(strong_id)
 
     # ---- vectors ----------------------------------------------------------
 
@@ -470,7 +479,8 @@ class Memory:
 
     def events(self, limit: int = 20) -> list[dict]:
         rows = self.db.execute("SELECT * FROM events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-        return [{"at": r["at"], "kind": r["kind"], **json.loads(r["detail"])} for r in rows]
+        # The event's own kind wins over any "kind" field inside the detail.
+        return [{**json.loads(r["detail"]), "at": r["at"], "kind": r["kind"]} for r in rows]
 
     def kv_get(self, key: str, default=None):
         row = self.db.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
