@@ -1,7 +1,7 @@
 # Greg: personal AI assistant server
 
 Date: 2026-11-16
-Status: waiting for approval
+Status: approved and built. See "What changed during the build" at the end.
 
 ## What this is and why
 
@@ -322,3 +322,25 @@ Each step leaves something that runs and is tested.
 3. Web search backend that needs no key.
 4. Ranking weights for recall and the tool picker.
 5. Library picks inside each part.
+
+## What changed during the build
+
+1. The owner confirmed both assumptions and said Claude runs on an API key.
+   `ANTHROPIC_API_KEY` in `.env` is passed to Claude Code. A Claude login works too.
+2. The real About Me answers live in `~/.greg/` next to the database, not in the
+   repo folder. A filled in `profile/about_me.yaml` is still ignored by git.
+3. Piper (text to speech) is licensed GPL, so Greg runs it as a separate program
+   instead of importing it.
+4. Reading files is fenced the same way as writing them: free inside the
+   workspace, asks outside. Otherwise a web page could talk Greg into reading
+   keys off the server.
+5. One approval covers a whole code task (writing files and running commands
+   inside that project folder) instead of one question per command.
+6. The manifest has 30 servers: 19 with no setup, 6 that turn on with a key, 5
+   switched off. Only permissively licensed or first party servers were kept.
+7. The official file and thinking servers need Node 24 or newer. The install
+   script and `greg doctor` check for it.
+8. Nvidia defaults to one confirmed tool calling model for every role. Other
+   model names could not be confirmed from the build machine.
+9. The tool servers were verified against the package registries but not
+   started on the build machine. `greg tools sync` does that on the server.

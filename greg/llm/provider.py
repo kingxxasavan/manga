@@ -6,8 +6,8 @@ Ollama and Nvidia both do, so the same code talks to either.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 import httpx
 

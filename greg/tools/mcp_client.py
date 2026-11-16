@@ -145,6 +145,10 @@ class MCPManager:
     async def stop(self) -> None:
         self._stop.set()
         if self._tasks:
+            # Running servers leave on their own. One still stuck starting is cancelled.
+            _, stuck = await asyncio.wait(self._tasks.values(), timeout=10)
+            for task in stuck:
+                task.cancel()
             await asyncio.gather(*self._tasks.values(), return_exceptions=True)
         self._tasks.clear()
 
@@ -205,7 +209,7 @@ class MCPManager:
         async def handler(args: dict, ctx: ToolContext) -> str:
             try:
                 result = await asyncio.wait_for(client.call_tool(remote_name, args), self.call_timeout)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 return f"Error: {spec.name} did not answer within {self.call_timeout:g} seconds"
             except Exception as e:
                 return f"Error: {_explain(e)}"

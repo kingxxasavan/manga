@@ -23,9 +23,9 @@ LIMIT_CATEGORIES = {"rate_limit", "billing_error", "overloaded"}
 LIMIT = re.compile(
     r"usage limit|rate limit|rate_limit|hit your limit|limit reached|out of (extra )?usage|"
     r"credit balance|billing_error|quota exceeded|insufficient (credits|funds)",
-    re.I,
+    re.IGNORECASE,
 )
-AUTH = re.compile(r"invalid api key|/login|not logged in|authentication_failed|unauthorized", re.I)
+AUTH = re.compile(r"invalid api key|/login|not logged in|authentication_failed|unauthorized", re.IGNORECASE)
 ALLOWED_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,WebSearch"
 
 
@@ -44,7 +44,7 @@ def parse_reset(text: str) -> float | None:
     stamp = re.search(r"\|(\d{10})\b", text)
     if stamp:
         return float(stamp.group(1))
-    clock = re.search(r"resets?\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)", text, re.I)
+    clock = re.search(r"resets?\s*(?:at\s*)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)", text, re.IGNORECASE)
     if not clock:
         return None
     hour = int(clock.group(1)) % 12 + (12 if clock.group(3).lower() == "pm" else 0)

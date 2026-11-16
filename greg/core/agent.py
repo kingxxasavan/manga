@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Awaitable, Callable
 
 from greg.config import Settings
 from greg.llm.provider import ProviderError
@@ -116,7 +116,7 @@ class Agent:
         reply = None
 
         try:
-            for _ in range(self.settings.max_steps):
+            for _ in range(max(1, self.settings.max_steps)):
                 offered = self.registry.pick(text, self.settings.max_tools, query_vec, stats, ctx.extra_tools)
                 reply = await self.router.chat(
                     "chat", messages, [t.schema() for t in offered],
@@ -150,10 +150,16 @@ class Agent:
         emit({"type": "done", **{k: v for k, v in result.items() if k != "text"}})
 
         if self.learner and self.settings.learn:
-            task = asyncio.create_task(self.learner.learn(text, reply.content))
+            task = asyncio.create_task(self._learn(text, reply.content))
             self._background.add(task)
             task.add_done_callback(self._background.discard)
         return result
+
+    async def _learn(self, text: str, reply: str) -> None:
+        try:
+            await self.learner.learn(text, reply)
+        except Exception as e:  # learning is a bonus, it must never break a chat
+            self.memory.log("learn_failed", {"error": f"{type(e).__name__}: {e}"[:300]})
 
     async def _run_tool(self, tool_call, ctx: ToolContext, result: dict) -> str:
         tool = self.registry.get(tool_call.name)

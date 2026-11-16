@@ -10,7 +10,7 @@ from greg.coder.task import make_code_tool, project_dir
 from greg.tools.base import DANGER, ToolContext
 from greg.tools.builtin import register_builtin
 from greg.tools.registry import Registry
-from tests.fakes import FakeRouter, call, say
+from tests.fakes import FakeRouter, call
 
 FAKE = str(Path(__file__).parent / "fake_claude.py")
 
@@ -26,7 +26,7 @@ def claude(settings, memory, monkeypatch, tmp_path):
 
     runner = ClaudeRunner(settings, memory)
     runner.mode = mode
-    runner.calls = lambda: [json.loads(l) for l in (tmp_path / "claude.log").read_text().splitlines()] if (tmp_path / "claude.log").exists() else []
+    runner.calls = lambda: [json.loads(row) for row in (tmp_path / "claude.log").read_text().splitlines()] if (tmp_path / "claude.log").exists() else []
     return runner
 
 

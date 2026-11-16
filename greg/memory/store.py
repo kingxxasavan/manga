@@ -94,9 +94,7 @@ CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 STOPWORDS = frozenset(
-    "a an and are as at be but by do does for from had has have how i if in is it its me my "
-    "of on or so that the their them then there these they this to was we were what when "
-    "where which who why will with you your not no can could should would s t im".split()
+    ["a", "an", "and", "are", "as", "at", "be", "but", "by", "do", "does", "for", "from", "had", "has", "have", "how", "i", "if", "in", "is", "it", "its", "me", "my", "of", "on", "or", "so", "that", "the", "their", "them", "then", "there", "these", "they", "this", "to", "was", "we", "were", "what", "when", "where", "which", "who", "why", "will", "with", "you", "your", "not", "no", "can", "could", "should", "would", "s", "t", "im"]
 )
 _WORD = re.compile(r"[a-z0-9]+")
 

@@ -1,14 +1,12 @@
-import asyncio
 
 import numpy as np
-import pytest
 
 from greg.core.agent import Agent
 from greg.memory.learn import Learner
-from greg.tools.base import DANGER, Tool
+from greg.tools.base import Tool
 from greg.tools.builtin import register_builtin
 from greg.tools.registry import Registry
-from tests.fakes import FakeRouter, call, say
+from tests.fakes import FakeRouter, call
 
 
 def build(settings, memory, *script, **kw):
@@ -27,7 +25,7 @@ async def turn(agent, text, session=None, confirm=None, **kw):
 
 
 async def test_reply_is_streamed_stored_and_returned(settings, memory):
-    agent, router, _ = build(settings, memory, "Hello there")
+    agent, _, _ = build(settings, memory, "Hello there")
     result, events = await turn(agent, "hi")
     assert result["text"] == "Hello there"
     assert [e["delta"] for e in events if e["type"] == "text"] == ["Hello there"]
@@ -64,7 +62,7 @@ async def test_memories_that_were_used_get_counted(settings, memory):
 
 async def test_tool_call_runs_and_its_result_goes_back_to_the_model(settings, memory):
     agent, router, _ = build(settings, memory, call("calculate", expression="6*7"), "It is 42.")
-    result, events = await turn(agent, "calculate 6 times 7")
+    result, _ = await turn(agent, "calculate 6 times 7")
     tool_msg = router.calls[1]["messages"][-1]
     assert tool_msg["role"] == "tool" and "42" in tool_msg["content"]
     assert result["text"] == "It is 42." and result["tools_used"] == ["calculate"]
@@ -191,3 +189,18 @@ async def test_learning_runs_after_the_turn_without_blocking_the_reply(settings,
     await turn(agent, "my dog Biscuit chewed my shoe again")
     await agent.drain()
     assert [m.text for m in memory.search("dog")] == ["Has a dog named Biscuit"]
+
+
+async def test_a_crash_while_learning_is_logged_and_never_reaches_the_owner(settings, memory):
+    agent, _, _ = build(settings, memory, "Nice.")
+    settings.learn = True
+
+    class BrokenLearner:
+        async def learn(self, user_text, reply):
+            raise RuntimeError("disk full")
+
+    agent.learner = BrokenLearner()
+    result, events = await turn(agent, "my dog Biscuit chewed my shoe again")
+    await agent.drain()
+    assert result["text"] == "Nice." and events[-1]["type"] == "done"
+    assert memory.events()[0]["kind"] == "learn_failed" and "disk full" in memory.events()[0]["error"]

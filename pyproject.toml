@@ -42,4 +42,19 @@ asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
+# Greg catches broad exceptions on purpose in a few places: a crashing tool or
+# a model outage must never take the whole conversation down.
+ignore = [
+    "E501",      # long lines are fine for tool descriptions
+    "B905",      # zip() lengths are checked by the caller here
+    "SIM105",    # plain try/except reads clearer than contextlib.suppress
+    "SIM115",
+    "ASYNC109",  # tool timeouts are passed through to subprocesses on purpose
+    "ASYNC110",
+    "ASYNC230",  # small local file writes, not worth a thread
+    "ASYNC240",
+]

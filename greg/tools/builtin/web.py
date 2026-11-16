@@ -38,8 +38,8 @@ async def web_search(args: dict, ctx: ToolContext) -> str:
 
 
 class _Text(HTMLParser):
-    SKIP = {"script", "style", "noscript", "svg", "head", "nav", "footer"}
-    BLOCK = {"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "section", "article"}
+    SKIP = frozenset({"script", "style", "noscript", "svg", "head", "nav", "footer"})
+    BLOCK = frozenset({"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "section", "article"})
 
     def __init__(self) -> None:
         super().__init__()

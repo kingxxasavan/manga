@@ -69,13 +69,16 @@ async def run_process(argv: list[str] | str, cwd, timeout: float, env: dict | No
     try:
         out, _ = await asyncio.wait_for(proc.communicate(stdin), timeout)
         return proc.returncode, out.decode("utf-8", errors="replace")
-    except asyncio.TimeoutError:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        await proc.wait()
+    except TimeoutError:
         return None, ""
+    finally:
+        # Timed out, or the owner hung up mid command: nothing is left running.
+        if proc.returncode is None:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            await asyncio.shield(proc.wait())
 
 
 def _report(code: int | None, output: str, timeout: float, limit: int) -> str:

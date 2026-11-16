@@ -4,6 +4,7 @@ import httpx
 import pytest
 
 from greg.config import Provider, Settings
+from greg.llm.provider import ProviderError
 from greg.llm.router import AllProvidersFailed, Router
 
 
@@ -133,7 +134,7 @@ async def test_no_failover_after_text_was_already_shown(tmp_path):
         return sse(delta(content="other"))
 
     seen = []
-    with pytest.raises(Exception):
+    with pytest.raises(ProviderError):
         await make_router(tmp_path, handler).chat("chat", [], on_text=seen.append)
     assert seen == ["par"]
 

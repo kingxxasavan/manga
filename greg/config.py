@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import os
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Mapping
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LOOPBACK = {"127.0.0.1", "localhost", "::1"}
@@ -34,10 +34,10 @@ DEFAULT_PROVIDERS = [
         "base_url": "https://integrate.api.nvidia.com/v1",
         "api_key_env": "NVIDIA_API_KEY",
         "embed_input_type": True,
+        # One model known to support tool calling does every job here. A role
+        # that is not listed uses the chat model. Swap in others in greg.toml.
         "models": {
             "chat": "meta/llama-3.3-70b-instruct",
-            "coder": "qwen/qwen2.5-coder-32b-instruct",
-            "small": "meta/llama-3.1-8b-instruct",
             "embed": "nvidia/nv-embedqa-e5-v5",
         },
     },
@@ -95,6 +95,7 @@ class Settings:
 
     stt_model: str = "base"
     tts_voice: str = "en_US-lessac-medium"
+    piper_bin: str = "piper"
 
     env: Mapping[str, str] = field(default_factory=dict, repr=False)
 

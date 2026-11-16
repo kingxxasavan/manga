@@ -156,3 +156,25 @@ async def test_remember_saves_a_memory_the_recall_tool_can_find(registry, ctx):
 async def test_find_tools_lists_tools_by_what_they_do(registry, ctx):
     out = await run(registry, ctx, "find_tools", query="run a shell command")
     assert "run_shell" in out
+
+
+async def test_cancelling_a_running_command_kills_it(tmp_path):
+    import asyncio
+    import os
+
+    from greg.tools.builtin.system import run_process
+
+    task = asyncio.create_task(run_process("echo $$ > pid; sleep 30", tmp_path, 60))
+    while not (tmp_path / "pid").exists() or not (tmp_path / "pid").read_text().strip():
+        await asyncio.sleep(0.02)
+    pid = int((tmp_path / "pid").read_text())
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    for _ in range(50):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        await asyncio.sleep(0.02)
+    pytest.fail("the command kept running after it was cancelled")

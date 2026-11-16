@@ -15,84 +15,84 @@ def live(memory):
 
 
 async def test_a_new_fact_is_added(memory):
-    l, _ = learner(memory, {"ops": [{"op": "add", "kind": "preference", "text": "Prefers tea over coffee", "importance": 0.4}]})
-    await l.learn("I always drink tea, never coffee", "Noted!")
+    learn, _ = learner(memory, {"ops": [{"op": "add", "kind": "preference", "text": "Prefers tea over coffee", "importance": 0.4}]})
+    await learn.learn("I always drink tea, never coffee", "Noted!")
     row = memory.list()[0]
     assert (row.kind, row.text, row.source) == ("preference", "Prefers tea over coffee", "learned")
 
 
 async def test_saying_the_same_thing_again_makes_greg_more_sure_not_duplicated(memory):
     mid = memory.add("preference", "Prefers tea over coffee", confidence=0.6)
-    l, _ = learner(memory, {"ops": [{"op": "add", "kind": "preference", "text": "prefers tea over coffee."}]})
-    await l.learn("tea please, you know I prefer it over coffee", "Sure")
+    learn, _ = learner(memory, {"ops": [{"op": "add", "kind": "preference", "text": "prefers tea over coffee."}]})
+    await learn.learn("tea please, you know I prefer it over coffee", "Sure")
     assert memory.count() == 1 and memory.get(mid).confidence > 0.6
 
 
 async def test_the_model_can_reinforce_a_memory_it_was_shown(memory):
     mid = memory.add("habit", "Goes to the gym on Mondays", confidence=0.5)
-    l, router = learner(memory, lambda msgs: {"ops": [{"op": "reinforce", "id": mid}]})
-    await l.learn("heading to the gym, its Monday after all", "Have fun")
+    learn, router = learner(memory, lambda msgs: {"ops": [{"op": "reinforce", "id": mid}]})
+    await learn.learn("heading to the gym, its Monday after all", "Have fun")
     assert f"#{mid}" in router.calls[0]["messages"][-1]["content"]  # it was shown the memory
     assert memory.get(mid).confidence > 0.5
 
 
 async def test_a_changed_fact_replaces_the_old_one_and_keeps_history(memory):
     old = memory.add("fact", "Lives in Austin")
-    l, _ = learner(memory, {"ops": [{"op": "replace", "id": old, "text": "Lives in Denver"}]})
-    await l.learn("I moved, I live in Denver now not Austin", "Got it")
+    learn, _ = learner(memory, {"ops": [{"op": "replace", "id": old, "text": "Lives in Denver"}]})
+    await learn.learn("I moved, I live in Denver now not Austin", "Got it")
     assert live(memory) == ["Lives in Denver"]
     assert memory.get(old).superseded_by is not None
 
 
 async def test_a_correction_is_saved_as_a_lesson_with_high_confidence(memory):
-    l, _ = learner(memory, {"ops": [{"op": "add", "kind": "lesson", "text": "Keep answers short, no long intros"}]})
-    await l.learn("no, stop writing such long intros, keep it short", "Understood.")
+    learn, _ = learner(memory, {"ops": [{"op": "add", "kind": "lesson", "text": "Keep answers short, no long intros"}]})
+    await learn.learn("no, stop writing such long intros, keep it short", "Understood.")
     row = memory.list()[0]
     assert row.kind == "lesson" and row.confidence >= 0.8
 
 
 async def test_replace_with_an_id_the_model_made_up_becomes_a_plain_add(memory):
-    l, _ = learner(memory, {"ops": [{"op": "replace", "id": 9999, "text": "Drives a red truck"}]})
-    await l.learn("I drive a red truck these days", "Cool")
+    learn, _ = learner(memory, {"ops": [{"op": "replace", "id": 9999, "text": "Drives a red truck"}]})
+    await learn.learn("I drive a red truck these days", "Cool")
     assert live(memory) == ["Drives a red truck"]
 
 
 async def test_garbage_from_the_model_changes_nothing(memory):
     memory.add("fact", "Lives in Austin")
-    l, _ = learner(memory, "Sure! Here are some thoughts, no JSON though.")
-    assert await l.learn("I think I like my town a lot honestly", "Nice") == []
+    learn, _ = learner(memory, "Sure! Here are some thoughts, no JSON though.")
+    assert await learn.learn("I think I like my town a lot honestly", "Nice") == []
     assert live(memory) == ["Lives in Austin"]
 
 
 async def test_reply_wrapped_in_a_code_fence_and_chatter_still_parses(memory):
-    l, _ = learner(memory, 'Here you go:\n```json\n{"ops": [{"op": "add", "kind": "fact", "text": "Plays bass guitar"}]}\n```\nDone!')
-    await l.learn("I play bass guitar in a band", "Cool")
+    learn, _ = learner(memory, 'Here you go:\n```json\n{"ops": [{"op": "add", "kind": "fact", "text": "Plays bass guitar"}]}\n```\nDone!')
+    await learn.learn("I play bass guitar in a band", "Cool")
     assert live(memory) == ["Plays bass guitar"]
 
 
 async def test_tiny_messages_are_skipped_without_calling_the_model(memory):
-    l, router = learner(memory)
-    assert await l.learn("ok thanks", "np") == []
+    learn, router = learner(memory)
+    assert await learn.learn("ok thanks", "np") == []
     assert router.calls == []
 
 
 async def test_a_model_outage_does_not_break_anything(memory):
-    l, _ = learner(memory)  # no scripted replies, the call raises
-    assert await l.learn("I started a new job at the bike shop", "Congrats") == []
+    learn, _ = learner(memory)  # no scripted replies, the call raises
+    assert await learn.learn("I started a new job at the bike shop", "Congrats") == []
 
 
 async def test_new_memories_get_meaning_vectors_when_possible(memory):
-    l, _ = learner(
+    learn, _ = learner(
         memory, {"ops": [{"op": "add", "kind": "fact", "text": "Has a sister named Ana"}]},
         embedder=lambda t: np.array([1.0, 0.0]),
     )
-    await l.learn("my sister Ana is visiting this weekend", "Fun")
+    await learn.learn("my sister Ana is visiting this weekend", "Fun")
     assert memory.missing_vectors("fake:emb") == []
 
 
 async def test_every_change_is_logged_so_it_can_be_explained(memory):
-    l, _ = learner(memory, {"ops": [{"op": "add", "kind": "fact", "text": "Has a sister named Ana"}]})
-    await l.learn("my sister Ana is visiting this weekend", "Fun")
+    learn, _ = learner(memory, {"ops": [{"op": "add", "kind": "fact", "text": "Has a sister named Ana"}]})
+    await learn.learn("my sister Ana is visiting this weekend", "Fun")
     event = memory.events()[0]
     assert event["kind"] == "learn" and event["op"] == "add"
 

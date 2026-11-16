@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 SAFE = "safe"      # runs
 WRITE = "write"    # file access: runs inside the workspace, asks outside it
@@ -23,7 +24,7 @@ class Tool:
     name: str
     description: str
     parameters: dict
-    handler: Callable[[dict, "ToolContext"], Awaitable[str]]
+    handler: Callable[[dict, ToolContext], Awaitable[str]]
     tier: str = SAFE
     source: str = "builtin"
     core: bool = False  # always offered to the model
