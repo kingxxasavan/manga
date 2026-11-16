@@ -1,7 +1,7 @@
 from mcp import Client
 
-from greg.mcp_server import build_server
-from greg.profile.about import import_profile
+from anexis.mcp_server import build_server
+from anexis.profile.about import import_profile
 
 
 async def ask(settings, tool, **args):

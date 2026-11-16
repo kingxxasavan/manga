@@ -1,7 +1,7 @@
 import numpy as np
 
-from greg.memory.consolidate import consolidate
-from greg.memory.learn import Learner, parse_json
+from anexis.memory.consolidate import consolidate
+from anexis.memory.learn import Learner, parse_json
 from tests.fakes import FakeRouter
 
 
@@ -21,7 +21,7 @@ async def test_a_new_fact_is_added(memory):
     assert (row.kind, row.text, row.source) == ("preference", "Prefers tea over coffee", "learned")
 
 
-async def test_saying_the_same_thing_again_makes_greg_more_sure_not_duplicated(memory):
+async def test_saying_the_same_thing_again_makes_anexis_more_sure_not_duplicated(memory):
     mid = memory.add("preference", "Prefers tea over coffee", confidence=0.6)
     learn, _ = learner(memory, {"ops": [{"op": "add", "kind": "preference", "text": "prefers tea over coffee."}]})
     await learn.learn("tea please, you know I prefer it over coffee", "Sure")

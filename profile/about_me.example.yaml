@@ -1,9 +1,9 @@
 # About Me template. Copy it, fill in what you want, leave the rest blank:
 #
 #   cp profile/about_me.example.yaml profile/about_me.yaml
-#   greg aboutme import profile/about_me.yaml
+#   anexis aboutme import profile/about_me.yaml
 #
-# Or skip the file and run `greg aboutme` to be asked the same things.
+# Or skip the file and run `anexis aboutme` to be asked the same things.
 # Your filled in copy is ignored by git and never leaves your server.
 
 name:
@@ -20,6 +20,6 @@ goals: []
 interests: []
 people: []           # "Ana, my sister"
 tools: []            # languages, apps, devices
-talk_style:          # how Greg should talk to you
-avoid: []            # things Greg should never do or bring up
+talk_style:          # how Anexis should talk to you
+avoid: []            # things Anexis should never do or bring up
 other: []

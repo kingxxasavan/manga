@@ -3,7 +3,7 @@ import stat
 
 import pytest
 
-from greg.cli.setup import (
+from anexis.cli.setup import (
     PRESETS,
     Machine,
     build_toml,
@@ -14,7 +14,7 @@ from greg.cli.setup import (
     run_wizard,
     update_env_file,
 )
-from greg.config import load_settings
+from anexis.config import load_settings
 
 GPU_BOX = Machine(vram_gb=24, ram_gb=64, has_ollama=True, node_major=24, has_claude=True, has_systemd=True)
 LAPTOP = Machine(vram_gb=8, ram_gb=16, has_ollama=False, node_major=22, has_claude=False, has_systemd=True)
@@ -40,7 +40,7 @@ class Script:
 def wizard(tmp_path, machine=LAPTOP, env=None, ask=None, **kw):
     """The whole setup the way the installer runs it: choices first, then
     (after the downloads would have happened) the keys."""
-    home = tmp_path / "greghome"
+    home = tmp_path / "anexishome"
     said = []
     ask = ask or Script()
     result = run_wizard(home, env or {}, machine, ask, said.append, **kw)
@@ -53,24 +53,24 @@ def wizard(tmp_path, machine=LAPTOP, env=None, ask=None, **kw):
 
 
 @pytest.mark.parametrize("name", list(PRESETS))
-def test_every_preset_writes_a_config_greg_can_load(tmp_path, name):
-    (tmp_path / "greg.toml").write_text(build_toml(PRESETS[name], "Greg"))
-    settings = load_settings(env={"GREG_HOME": str(tmp_path), "NVIDIA_API_KEY": "nvapi-x"}, config_path=tmp_path / "greg.toml")
+def test_every_preset_writes_a_config_anexis_can_load(tmp_path, name):
+    (tmp_path / "anexis.toml").write_text(build_toml(PRESETS[name], "Anexis"))
+    settings = load_settings(env={"ANEXIS_HOME": str(tmp_path), "NVIDIA_API_KEY": "nvapi-x"}, config_path=tmp_path / "anexis.toml")
     assert settings.problems() == []
     assert all(p.models.get("chat") for p in settings.providers)
 
 
 def test_cloud_preset_uses_nvidia_only_and_pulls_no_local_models(tmp_path):
-    (tmp_path / "greg.toml").write_text(build_toml(PRESETS["cloud"], "Greg"))
-    settings = load_settings(env={"GREG_HOME": str(tmp_path)}, config_path=tmp_path / "greg.toml")
+    (tmp_path / "anexis.toml").write_text(build_toml(PRESETS["cloud"], "Anexis"))
+    settings = load_settings(env={"ANEXIS_HOME": str(tmp_path)}, config_path=tmp_path / "anexis.toml")
     assert [p.name for p in settings.providers] == ["nvidia"]
     assert PRESETS["cloud"].pull == []
 
 
 def test_max_preset_uses_bigger_models_and_wider_recall_than_light(tmp_path):
     def load(name):
-        (tmp_path / "greg.toml").write_text(build_toml(PRESETS[name], "Greg"))
-        return load_settings(env={"GREG_HOME": str(tmp_path)}, config_path=tmp_path / "greg.toml")
+        (tmp_path / "anexis.toml").write_text(build_toml(PRESETS[name], "Anexis"))
+        return load_settings(env={"ANEXIS_HOME": str(tmp_path)}, config_path=tmp_path / "anexis.toml")
 
     big, small = load("max"), load("light")
     assert big.recall_k > small.recall_k and big.max_tools > small.max_tools
@@ -78,8 +78,8 @@ def test_max_preset_uses_bigger_models_and_wider_recall_than_light(tmp_path):
 
 
 def test_the_assistant_name_lands_in_the_config_even_with_odd_characters(tmp_path):
-    (tmp_path / "greg.toml").write_text(build_toml(PRESETS["balanced"], 'Gr"eg\\ the 2nd'))
-    assert load_settings(env={"GREG_HOME": str(tmp_path)}, config_path=tmp_path / "greg.toml").name == 'Gr"eg\\ the 2nd'
+    (tmp_path / "anexis.toml").write_text(build_toml(PRESETS["balanced"], 'Gr"eg\\ the 2nd'))
+    assert load_settings(env={"ANEXIS_HOME": str(tmp_path)}, config_path=tmp_path / "anexis.toml").name == 'Gr"eg\\ the 2nd'
 
 
 @pytest.mark.parametrize("machine, env, expected", [
@@ -117,7 +117,7 @@ def test_an_empty_value_removes_the_key(tmp_path):
 
 
 def test_a_value_with_spaces_or_symbols_survives_a_round_trip(tmp_path):
-    from greg.config import read_dotenv
+    from anexis.config import read_dotenv
 
     path = tmp_path / ".env"
     update_env_file(path, {"ODD": "a b#c$d'e"})
@@ -137,8 +137,8 @@ def test_a_key_that_looks_wrong_gets_a_warning_not_a_refusal():
 def test_pressing_enter_on_everything_gives_the_recommended_setup(tmp_path):
     home, result, _ = wizard(tmp_path, machine=LAPTOP)
     assert result.preset == "balanced" and not result.cancelled
-    settings = load_settings(env={"GREG_HOME": str(home)}, config_path=home / "greg.toml")
-    assert settings.providers[0].name == "ollama" and settings.name == "Greg"
+    settings = load_settings(env={"ANEXIS_HOME": str(home)}, config_path=home / "anexis.toml")
+    assert settings.providers[0].name == "ollama" and settings.name == "Anexis"
     plan = read_plan(home / "setup-plan")
     assert plan["PRESET"] == "balanced" and plan["INSTALL_OLLAMA"] == "1"
     assert plan["PULL_MODELS"].split() == PRESETS["balanced"].pull
@@ -167,7 +167,7 @@ def test_a_key_already_in_the_environment_is_filled_in_without_typing(tmp_path):
 
 
 def test_skipping_a_key_keeps_the_one_already_saved(tmp_path):
-    home = tmp_path / "greghome"
+    home = tmp_path / "anexishome"
     home.mkdir()
     (home / ".env").write_text("NVIDIA_API_KEY=nvapi-existing0001\n")
     wizard(tmp_path)
@@ -175,7 +175,7 @@ def test_skipping_a_key_keeps_the_one_already_saved(tmp_path):
 
 
 def test_a_dash_removes_a_saved_key(tmp_path):
-    home = tmp_path / "greghome"
+    home = tmp_path / "anexishome"
     home.mkdir()
     (home / ".env").write_text("NVIDIA_API_KEY=nvapi-existing0001\n")
     wizard(tmp_path, ask=Script(nvidia="-"))
@@ -194,15 +194,15 @@ def test_every_option_that_needs_a_key_is_asked_about_on_its_own(tmp_path):
 
 def test_the_choices_step_never_asks_for_a_key(tmp_path):
     ask = Script()
-    home = tmp_path / "greghome"
+    home = tmp_path / "anexishome"
     run_wizard(home, {"NVIDIA_API_KEY": "nvapi-fromenv00001"}, LAPTOP, ask, lambda text: None)
     assert not any(secret for _, secret in ask.asked)
-    assert (home / "greg.toml").exists() and (home / "setup-plan").exists()
+    assert (home / "anexis.toml").exists() and (home / "setup-plan").exists()
     assert not (home / ".env").exists()  # keys come later, after the downloads
 
 
 def test_keys_can_be_asked_later_on_their_own(tmp_path):
-    home = tmp_path / "greghome"
+    home = tmp_path / "anexishome"
     run_wizard(home, {}, LAPTOP, Script(), lambda text: None)
     said = []
     changed = run_keys(home, {}, Script(nvidia="nvapi-secretsecret1234", exa="exa-key-0123456789"), said.append)
@@ -232,25 +232,25 @@ def test_running_the_key_step_again_changes_nothing_when_everything_is_skipped(t
 def test_choosing_remote_access_makes_a_token_and_opens_the_server(tmp_path):
     home, _, shown = wizard(tmp_path, ask=Script(other_machines="y"))
     env = (home / ".env").read_text()
-    token = re.search(r"GREG_TOKEN=(\S+)", env).group(1)
-    assert len(token) >= 32 and "GREG_HOST=0.0.0.0" in env
-    assert load_settings(env={"GREG_HOME": str(home)}, config_path=home / "greg.toml").problems() == []
-    assert "GREG_TOKEN" in shown  # told where to find it for the other machine
+    token = re.search(r"ANEXIS_TOKEN=(\S+)", env).group(1)
+    assert len(token) >= 32 and "ANEXIS_HOST=0.0.0.0" in env
+    assert load_settings(env={"ANEXIS_HOME": str(home)}, config_path=home / "anexis.toml").problems() == []
+    assert "ANEXIS_TOKEN" in shown  # told where to find it for the other machine
 
 
 def test_an_existing_token_is_kept_so_other_machines_stay_connected(tmp_path):
-    home = tmp_path / "greghome"
+    home = tmp_path / "anexishome"
     home.mkdir()
-    (home / ".env").write_text("GREG_TOKEN=already-have-a-good-long-token-value-here\nGREG_HOST=0.0.0.0\n")
+    (home / ".env").write_text("ANEXIS_TOKEN=already-have-a-good-long-token-value-here\nANEXIS_HOST=0.0.0.0\n")
     wizard(tmp_path, ask=Script(other_machines="y"))
-    assert "GREG_TOKEN=already-have-a-good-long-token-value-here" in (home / ".env").read_text()
+    assert "ANEXIS_TOKEN=already-have-a-good-long-token-value-here" in (home / ".env").read_text()
 
 
 def test_voice_service_and_name_choices_reach_the_config_and_the_plan(tmp_path):
     home, _, _ = wizard(tmp_path, ask=Script(voice="y", background="y", call_it="Max"))
     plan = read_plan(home / "setup-plan")
     assert plan["INSTALL_VOICE"] == "1" and plan["ENABLE_SERVICE"] == "1"
-    assert load_settings(env={"GREG_HOME": str(home)}, config_path=home / "greg.toml").name == "Max"
+    assert load_settings(env={"ANEXIS_HOME": str(home)}, config_path=home / "anexis.toml").name == "Max"
 
 
 def test_install_steps_can_each_be_skipped(tmp_path):
@@ -275,18 +275,18 @@ def test_the_background_service_is_not_offered_without_systemd(tmp_path):
 
 
 def test_an_old_config_is_backed_up_before_it_is_replaced(tmp_path):
-    home = tmp_path / "greghome"
+    home = tmp_path / "anexishome"
     home.mkdir()
-    (home / "greg.toml").write_text('name = "Old"\n')
+    (home / "anexis.toml").write_text('name = "Old"\n')
     wizard(tmp_path)
-    backups = list(home.glob("greg.toml.bak*"))
+    backups = list(home.glob("anexis.toml.bak*"))
     assert len(backups) == 1 and backups[0].read_text() == 'name = "Old"\n'
 
 
 def test_saying_no_at_the_end_changes_nothing(tmp_path):
     home, result, _ = wizard(tmp_path, ask=Script(nvidia="nvapi-secretsecret1234", looks_right="n"))
     assert result.cancelled
-    assert not (home / "greg.toml").exists() and not (home / ".env").exists() and not (home / "setup-plan").exists()
+    assert not (home / "anexis.toml").exists() and not (home / ".env").exists() and not (home / "setup-plan").exists()
 
 
 def test_yes_mode_asks_nothing_and_takes_keys_from_the_environment(tmp_path):
@@ -315,6 +315,6 @@ def test_the_plan_only_ever_holds_plain_safe_values(tmp_path):
         assert re.fullmatch(r"[A-Z_]+=[A-Za-z0-9_.:/ -]*", line), line
 
 
-def test_cloud_without_a_key_warns_that_greg_cannot_talk_yet(tmp_path):
+def test_cloud_without_a_key_warns_that_anexis_cannot_talk_yet(tmp_path):
     _, _, shown = wizard(tmp_path, ask=Script(preset="cloud"))
     assert "nvidia" in shown.lower() and "cannot" in shown.lower()

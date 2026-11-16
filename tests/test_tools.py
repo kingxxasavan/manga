@@ -1,9 +1,9 @@
 import pytest
 
-from greg.tools.base import DANGER, SAFE, WRITE, Tool, ToolContext
-from greg.tools.builtin import register_builtin
-from greg.tools.permissions import decide
-from greg.tools.registry import Registry
+from anexis.tools.base import DANGER, SAFE, WRITE, Tool, ToolContext
+from anexis.tools.builtin import register_builtin
+from anexis.tools.permissions import decide
+from anexis.tools.registry import Registry
 
 
 async def noop(args, ctx):
@@ -162,7 +162,7 @@ async def test_cancelling_a_running_command_kills_it(tmp_path):
     import asyncio
     import os
 
-    from greg.tools.builtin.system import run_process
+    from anexis.tools.builtin.system import run_process
 
     task = asyncio.create_task(run_process("echo $$ > pid; sleep 30", tmp_path, 60))
     while not (tmp_path / "pid").exists() or not (tmp_path / "pid").read_text().strip():

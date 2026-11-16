@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import json
 
-from greg.llm.provider import ChatResult, ToolCall
-from greg.llm.router import AllProvidersFailed
+from anexis.llm.provider import ChatResult, ToolCall
+from anexis.llm.router import AllProvidersFailed
 
 
 def say(text):

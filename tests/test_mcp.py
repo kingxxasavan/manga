@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from greg.tools.base import DANGER, SAFE, WRITE, ToolContext
-from greg.tools.mcp_client import MCPManager, launch_command, load_manifest
-from greg.tools.registry import Registry
+from anexis.tools.base import DANGER, SAFE, WRITE, ToolContext
+from anexis.tools.mcp_client import MCPManager, launch_command, load_manifest
+from anexis.tools.registry import Registry
 
 SERVER = str(Path(__file__).parent / "mcp_echo_server.py")
 
@@ -68,7 +68,7 @@ def test_a_server_switched_off_stays_off_even_with_its_key(settings):
 
 
 def test_the_repo_manifest_is_valid_and_every_entry_names_its_source(settings):
-    from greg.config import Settings
+    from anexis.config import Settings
 
     specs = load_manifest(Settings(home=settings.home))
     assert len(specs) >= 20
@@ -127,7 +127,7 @@ async def test_stopping_removes_the_tools(settings):
 
 
 def test_tool_servers_prefer_the_node_the_installer_put_in_the_home_folder(settings, tmp_path, monkeypatch):
-    from greg.tools.mcp_client import _server_env, node_dir
+    from anexis.tools.mcp_client import _server_env, node_dir
 
     monkeypatch.setenv("HOME", str(tmp_path))
     manifest(settings, "servers:\n  - {name: fs, type: npm, package: p, version: '1'}\n")
@@ -143,14 +143,14 @@ def test_tool_servers_prefer_the_node_the_installer_put_in_the_home_folder(setti
 async def test_with_outside_tools_off_no_tool_server_is_started(settings):
     import asyncio
 
-    from greg.core.app import GregApp
+    from anexis.core.app import AnexisApp
     from tests.fakes import FakeRouter
 
     manifest(settings, "servers:\n" + echo_entry())
     settings.outside_tools = False
     settings.consolidate_minutes = 0
-    greg = GregApp(settings, router=FakeRouter())
-    await greg.start()
+    anexis = AnexisApp(settings, router=FakeRouter())
+    await anexis.start()
     await asyncio.sleep(0.3)
-    assert greg.mcp.status == {} and greg.registry.get("echo_echo") is None
-    await greg.stop()
+    assert anexis.mcp.status == {} and anexis.registry.get("echo_echo") is None
+    await anexis.stop()

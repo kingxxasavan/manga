@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# The simplest way to open Anexis from this folder:
+#
+#   bash start            open the chat
+#   bash start doctor     anything after it is passed on, same as `anexis doctor`
+#
+# After setup you can also just type `anexis` from anywhere.
+
+here="$(cd "$(dirname "$0")" && pwd)"
+for candidate in "$(command -v anexis 2>/dev/null)" "$HOME/.local/bin/anexis" "$here/.venv/bin/anexis"; do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    exec "$candidate" "$@"
+  fi
+done
+
+echo "Anexis is not set up yet. From this folder run:"
+echo "  bash setup.sh"
+exit 1

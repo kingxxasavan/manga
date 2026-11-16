@@ -1,6 +1,6 @@
-# Greg's outside tools. Each entry is an MCP server from GitHub.
+# Anexis's outside tools. Each entry is an MCP server from GitHub.
 #
-# Nothing here is copied into this repo. `greg tools sync` (run by the install
+# Nothing here is copied into this repo. `anexis tools sync` (run by the install
 # script) downloads each one at the pinned version and checks that it starts.
 #
 # Fields:
@@ -125,7 +125,7 @@ servers:
     package: paper-search-mcp
     version: "0.1.4"
     # Did not start in a test run ("connection closed"). Off until it passes
-    # on your server: set enabled to true, then run `greg tools sync`.
+    # on your server: set enabled to true, then run `anexis tools sync`.
     enabled: false
     risk: safe
     source: https://github.com/openags/paper-search-mcp
@@ -157,7 +157,7 @@ servers:
     package: markitdown-mcp
     version: "0.0.1a8"
     # Did not start in a test run ("connection closed"). Off until it passes
-    # on your server: set enabled to true, then run `greg tools sync`.
+    # on your server: set enabled to true, then run `anexis tools sync`.
     enabled: false
     risk: write
     source: https://github.com/microsoft/markitdown
@@ -180,7 +180,7 @@ servers:
     version: "2.0.7"
     bin: ppt_mcp_server
     # Did not start in a test run ("connection closed"). Off until it passes
-    # on your server: set enabled to true, then run `greg tools sync`.
+    # on your server: set enabled to true, then run `anexis tools sync`.
     enabled: false
     risk: write
     source: https://github.com/GongRzhe/Office-PowerPoint-MCP-Server

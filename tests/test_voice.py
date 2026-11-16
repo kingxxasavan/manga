@@ -3,7 +3,7 @@ import wave
 from pathlib import Path
 from types import SimpleNamespace
 
-from greg.voice import Voice, speakable
+from anexis.voice import Voice, speakable
 
 FAKE_PIPER = str(Path(__file__).parent / "fake_piper.py")
 
@@ -50,7 +50,7 @@ def test_the_speech_model_is_loaded_once(settings):
 
 
 def test_hearing_is_reported_unavailable_with_the_fix_when_whisper_is_missing(settings, monkeypatch):
-    monkeypatch.setattr("greg.voice.find_spec", lambda name: None)
+    monkeypatch.setattr("anexis.voice.find_spec", lambda name: None)
     ok, why = Voice(settings).can_hear()
     assert not ok and "uv sync --extra voice" in why
 
@@ -90,7 +90,7 @@ def test_speakable_keeps_long_replies_short():
 def test_a_missing_audio_library_is_named_with_the_command_that_fixes_it(monkeypatch):
     import builtins
 
-    from greg.cli.audio import audio_ready
+    from anexis.cli.audio import audio_ready
 
     real_import = builtins.__import__
 
@@ -107,7 +107,7 @@ def test_a_missing_audio_library_is_named_with_the_command_that_fixes_it(monkeyp
 def test_no_voice_packages_at_all_points_at_the_installer(monkeypatch):
     import builtins
 
-    from greg.cli.audio import audio_ready
+    from anexis.cli.audio import audio_ready
 
     real_import = builtins.__import__
 

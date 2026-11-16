@@ -12,7 +12,7 @@ dist/
 .env
 .env.*
 !.env.example
-greg.toml
+anexis.toml
 profile/about_me.yaml
 *.db
 *.db-wal

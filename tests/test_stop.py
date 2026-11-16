@@ -2,7 +2,7 @@ import subprocess
 import sys
 import time
 
-from greg.cli.main import pid_file, stop_server, write_pid
+from anexis.cli.main import pid_file, stop_server, write_pid
 
 
 def spawn(*argv):
@@ -11,7 +11,7 @@ def spawn(*argv):
 
 def test_stop_ends_the_running_server_and_cleans_up(settings):
     settings.home.mkdir(parents=True)
-    server = spawn("greg", "serve")
+    server = spawn("anexis", "serve")
     write_pid(settings.home, server.pid)
     assert stop_server(settings.home) is True
     assert server.wait(timeout=10) is not None

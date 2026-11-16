@@ -3,9 +3,9 @@ import json
 import httpx
 import pytest
 
-from greg.config import Provider, Settings
-from greg.llm.provider import ProviderError
-from greg.llm.router import AllProvidersFailed, Router
+from anexis.config import Provider, Settings
+from anexis.llm.provider import ProviderError
+from anexis.llm.router import AllProvidersFailed, Router
 
 
 def sse(*chunks):

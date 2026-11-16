@@ -1,0 +1,56 @@
+# Optional settings. Copy to anexis.toml (here or in ~/.anexis/) and change what you want.
+# No secrets go in this file. Keys live in .env.
+
+name = "Anexis"
+# workspace = "~/anexis/workspace"   # where projects and files Anexis makes live
+
+[server]
+host = "127.0.0.1"   # 0.0.0.0 to reach it from other machines (needs ANEXIS_TOKEN)
+port = 8765
+
+# Providers are tried top to bottom. If one is down Anexis moves to the next.
+# A provider with api_key_env is skipped until that key is in .env.
+# Roles: chat (talking and tools), coder (code when Claude is out of usage),
+# small (memory and summaries), embed (meaning search). A missing role uses chat.
+[[providers]]
+name = "ollama"
+base_url = "http://localhost:11434/v1"
+[providers.models]
+chat = "qwen3:8b"
+coder = "qwen2.5-coder:7b"
+small = "qwen3:4b"
+embed = "nomic-embed-text"
+
+[[providers]]
+name = "nvidia"
+base_url = "https://integrate.api.nvidia.com/v1"
+api_key_env = "NVIDIA_API_KEY"
+embed_input_type = true
+[providers.models]
+chat = "meta/llama-3.3-70b-instruct"
+embed = "nvidia/nv-embedqa-e5-v5"
+
+[memory]
+recall_k = 8              # memories pulled into each reply
+history_messages = 24     # how much of the conversation the model sees
+history_chars = 24000     # and its size limit. Lower it for small context models.
+learn = true              # learn from every exchange
+consolidate_minutes = 60  # how often the upkeep runs
+
+[agent]
+max_steps = 8             # tool rounds per reply
+max_tools = 12            # tools offered to the model per turn
+
+[coder]
+claude_bin = "claude"
+# claude_model = "sonnet"
+claude_backoff_minutes = 30   # rest time when Claude gives no reset time
+fallback_rounds = 12
+
+[voice]
+stt_model = "base"                 # tiny, base, small, medium, large-v3
+tts_voice = "en_US-lessac-medium"
+
+# Loosen or tighten single tools. "allow" runs without asking, "ask" always asks.
+[permissions]
+# run_shell = "allow"

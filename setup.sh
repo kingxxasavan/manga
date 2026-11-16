@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs Greg on a Linux server, start to finish. Safe to run again.
+# Installs Anexis on a Linux server, start to finish. Safe to run again.
 # Run it from the folder you cloned:
 #
 #   bash setup.sh                 pick a preset, install, then enter your keys
@@ -15,7 +15,7 @@
 # for one option at a time (typing is hidden, Enter skips). Keys already in
 # your environment are filled in for you, for example:
 #   NVIDIA_API_KEY=nvapi-... ANTHROPIC_API_KEY=sk-ant-... bash setup.sh --yes
-# They end up in ~/.greg/.env, readable only by you. Never pass a key as an
+# They end up in ~/.anexis/.env, readable only by you. Never pass a key as an
 # argument: arguments are saved in your shell history.
 
 set -euo pipefail
@@ -37,9 +37,10 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-GREG_HOME_DIR="${GREG_HOME:-$HOME/.greg}"
+ANEXIS_HOME_DIR="${ANEXIS_HOME:-$HOME/.anexis}"
 LOCAL_BIN="$HOME/.local/bin"
-NODE_DIR="$HOME/.local/share/greg/node"
+NODE_DIR="$HOME/.local/share/anexis/node"
+ORIGINAL_PATH="$PATH"
 export PATH="$LOCAL_BIN:$PATH"
 WARNINGS=()
 
@@ -58,20 +59,40 @@ step "1 of 7  Basics"
 have curl || die "curl is needed and is not installed. Install it with your package manager and run this again."
 
 if ! have uv; then
-  echo "   installing uv (it manages Python for Greg)"
+  echo "   installing uv (it manages Python for Anexis)"
   curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1 || die "Could not install uv. See https://docs.astral.sh/uv/"
   export PATH="$LOCAL_BIN:$HOME/.cargo/bin:$PATH"
 fi
 have uv || die "uv was installed but is not on PATH. Open a new terminal and run this again."
 ok "uv $(uv --version | awk '{print $2}')"
 
-uv sync --quiet || die "Could not install Greg's Python packages."
-uv tool install --quiet --force --editable . || die "Could not install the greg command."
-have greg || die "The greg command was installed to $LOCAL_BIN but that is not on your PATH. Add it and run this again."
-ok "greg command installed"
+uv sync --quiet || die "Could not install Anexis's Python packages."
+uv tool install --quiet --force --editable . || die "Could not install the anexis command."
+have anexis || die "The anexis command did not install into $LOCAL_BIN."
+ok "anexis command installed"
 
-mkdir -p "$GREG_HOME_DIR"
-chmod 700 "$GREG_HOME_DIR"
+# Make `anexis` work from any folder in new terminals, by adding its folder to
+# PATH in your shell startup file. Does nothing when it is already there.
+ON_PATH=1
+case ":$ORIGINAL_PATH:" in *":$LOCAL_BIN:"*) ;; *) ON_PATH=0 ;; esac
+add_to_path() {
+  # One line in each startup file your shell reads. Files that already mention
+  # the folder are left alone, so running setup again never adds it twice.
+  local line='export PATH="$HOME/.local/bin:$PATH"  # added by Anexis setup'
+  local files=("$HOME/.bashrc" "$HOME/.profile") file
+  [ -f "$HOME/.bash_profile" ] && files+=("$HOME/.bash_profile")
+  if [ -f "$HOME/.zshrc" ] || [ "${SHELL##*/}" = zsh ]; then files+=("$HOME/.zshrc"); fi
+  for file in "${files[@]}"; do
+    grep -qsF '.local/bin' "$file" || printf '\n%s\n' "$line" >> "$file" || return 1
+  done
+}
+if [ "$ON_PATH" = 0 ]; then
+  if add_to_path; then ok "anexis will work from any folder in new terminals"
+  else warn "Could not add $LOCAL_BIN to your PATH. Add this line to your shell startup file: export PATH=\"\$HOME/.local/bin:\$PATH\""; fi
+fi
+
+mkdir -p "$ANEXIS_HOME_DIR"
+chmod 700 "$ANEXIS_HOME_DIR"
 
 # ---------------------------------------------------------------------------
 step "2 of 7  Your choices"
@@ -80,7 +101,7 @@ if [ "$RUN_SETUP" = 1 ]; then
   [ "$YES" = 1 ] && setup_args+=(--yes)
   [ -n "$PRESET" ] && setup_args+=(--preset "$PRESET")
   set +e
-  GREG_HOME="$GREG_HOME_DIR" greg setup "${setup_args[@]}"
+  ANEXIS_HOME="$ANEXIS_HOME_DIR" anexis setup "${setup_args[@]}"
   code=$?
   set -e
   [ "$code" = 3 ] && { echo; echo "Setup cancelled. Nothing was installed."; exit 0; }
@@ -89,7 +110,7 @@ else
   skip "using your last choices"
 fi
 
-PLAN_FILE="$GREG_HOME_DIR/setup-plan"
+PLAN_FILE="$ANEXIS_HOME_DIR/setup-plan"
 [ -f "$PLAN_FILE" ] || die "No saved choices found. Run: bash setup.sh"
 PLAN_PRESET=""; PLAN_INSTALL_OLLAMA=0; PLAN_PULL_MODELS=""; PLAN_INSTALL_NODE=0
 PLAN_INSTALL_CLAUDE=0; PLAN_INSTALL_VOICE=0; PLAN_SYNC_TOOLS=0; PLAN_ENABLE_SERVICE=0
@@ -118,7 +139,7 @@ else
     if have ollama; then
       # Make sure the Ollama server is answering before pulling.
       if ! ollama list >/dev/null 2>&1; then
-        nohup ollama serve >"$GREG_HOME_DIR/ollama.log" 2>&1 &
+        nohup ollama serve >"$ANEXIS_HOME_DIR/ollama.log" 2>&1 &
         for _ in $(seq 1 30); do ollama list >/dev/null 2>&1 && break; sleep 1; done
       fi
       for model in $PLAN_PULL_MODELS; do
@@ -180,15 +201,15 @@ if [ "$PLAN_INSTALL_CLAUDE" = 1 ] && ! have claude; then
       warn "Claude Code did not install. Later: npm install -g @anthropic-ai/claude-code"
     fi
   else
-    warn "Claude Code needs npm, which is missing. Greg will use its own coder for now."
+    warn "Claude Code needs npm, which is missing. Anexis will use its own coder for now."
   fi
 fi
 if have claude; then
   # Lets Claude look up your About Me and preferences while it writes your code.
-  if claude mcp add --scope user greg-memory -- greg mcp >/dev/null 2>&1; then ok "Claude can read your preferences"
+  if claude mcp add --scope user anexis-memory -- anexis mcp >/dev/null 2>&1; then ok "Claude can read your preferences"
   else ok "Claude already knows where your preferences are"; fi
 else
-  skip "Claude Code (Greg codes with its own model)"
+  skip "Claude Code (Anexis codes with its own model)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -196,7 +217,7 @@ step "5 of 7  Voice and tool servers"
 if [ "$PLAN_INSTALL_VOICE" = 1 ]; then
   echo "   installing voice (this downloads speech models)"
   if uv tool install --quiet --force --editable ".[voice]" && uv tool install --quiet piper-tts; then
-    voice_dir="$GREG_HOME_DIR/voices"
+    voice_dir="$ANEXIS_HOME_DIR/voices"
     mkdir -p "$voice_dir"
     if uvx --quiet --from piper-tts python -m piper.download_voices en_US-lessac-medium --data-dir "$voice_dir" >/dev/null 2>&1
     then
@@ -217,8 +238,8 @@ if [ "$SKIP_TOOLS" = 1 ]; then
   skip "tool servers (--skip-tools)"
 elif [ "$PLAN_SYNC_TOOLS" = 1 ]; then
   echo "   downloading tool servers at their pinned versions"
-  if GREG_HOME="$GREG_HOME_DIR" greg tools sync; then ok "tool servers ready"
-  else warn "Some tool servers did not start. Greg works without them. Later: greg tools sync"; fi
+  if ANEXIS_HOME="$ANEXIS_HOME_DIR" anexis tools sync; then ok "tool servers ready"
+  else warn "Some tool servers did not start. Anexis works without them. Later: anexis tools sync"; fi
 else
   skip "tool servers"
 fi
@@ -228,16 +249,16 @@ step "6 of 7  Keys"
 # Asked last on purpose: everything is downloaded, so this is the only thing
 # left that needs you. One option at a time, Enter skips.
 if [ "$SKIP_KEYS" = 1 ]; then
-  skip "keys (--skip-keys). Later: greg setup --keys"
+  skip "keys (--skip-keys). Later: anexis setup --keys"
 else
   key_args=(--keys --from-installer)
   [ "$YES" = 1 ] && key_args+=(--yes)
   set +e
-  GREG_HOME="$GREG_HOME_DIR" greg setup "${key_args[@]}"
+  ANEXIS_HOME="$ANEXIS_HOME_DIR" anexis setup "${key_args[@]}"
   code=$?
   set -e
-  if [ "$code" = 3 ]; then skip "keys cancelled. Later: greg setup --keys"
-  elif [ "$code" != 0 ]; then warn "The key step did not finish. Later: greg setup --keys"; fi
+  if [ "$code" = 3 ]; then skip "keys cancelled. Later: anexis setup --keys"
+  elif [ "$code" != 0 ]; then warn "The key step did not finish. Later: anexis setup --keys"; fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -245,20 +266,20 @@ step "7 of 7  Background service and checkup"
 if [ "$PLAN_ENABLE_SERVICE" = 1 ]; then
   if have systemctl && systemctl --user show-environment >/dev/null 2>&1; then
     mkdir -p "$HOME/.config/systemd/user"
-    cp scripts/greg.service "$HOME/.config/systemd/user/greg.service"
+    cp scripts/anexis.service "$HOME/.config/systemd/user/anexis.service"
     systemctl --user daemon-reload
-    GREG_HOME="$GREG_HOME_DIR" greg stop >/dev/null 2>&1 || true  # the service takes over
-    if systemctl --user enable --now greg >/dev/null 2>&1; then
+    ANEXIS_HOME="$ANEXIS_HOME_DIR" anexis stop >/dev/null 2>&1 || true  # the service takes over
+    if systemctl --user enable --now anexis >/dev/null 2>&1; then
       loginctl enable-linger "$USER" >/dev/null 2>&1 || true
-      ok "Greg runs in the background now (logs: journalctl --user -u greg -f)"
+      ok "Anexis runs in the background now (logs: journalctl --user -u anexis -f)"
     else
-      warn "The background service did not start. See: systemctl --user status greg"
+      warn "The background service did not start. See: systemctl --user status anexis"
     fi
   else
-    warn "No user systemd on this machine, so no background service. Greg starts when you open the chat."
+    warn "No user systemd on this machine, so no background service. Anexis starts when you open the chat."
   fi
 else
-  skip "background service (Greg starts when you open the chat)"
+  skip "background service (Anexis starts when you open the chat)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -266,10 +287,10 @@ fi
 # your back, so it runs with them switched off.
 checkup_tools=1
 { [ "$SKIP_TOOLS" = 1 ] || [ "$PLAN_SYNC_TOOLS" != 1 ]; } && checkup_tools=0
-GREG_HOME="$GREG_HOME_DIR" GREG_OUTSIDE_TOOLS="$checkup_tools" greg doctor || true
+ANEXIS_HOME="$ANEXIS_HOME_DIR" ANEXIS_OUTSIDE_TOOLS="$checkup_tools" anexis doctor || true
 # The checkup starts a server to test against. Stop it again so the next
-# `greg` starts fresh with your normal settings. A background service is left alone.
-[ "$PLAN_ENABLE_SERVICE" = 1 ] || GREG_HOME="$GREG_HOME_DIR" greg stop >/dev/null 2>&1 || true
+# `anexis` starts fresh with your normal settings. A background service is left alone.
+[ "$PLAN_ENABLE_SERVICE" = 1 ] || ANEXIS_HOME="$ANEXIS_HOME_DIR" anexis stop >/dev/null 2>&1 || true
 
 echo
 if [ ${#WARNINGS[@]} -gt 0 ]; then
@@ -278,14 +299,15 @@ if [ ${#WARNINGS[@]} -gt 0 ]; then
 else
   printf '%sInstalled.%s\n' "$BOLD" "$OFF"
 fi
-cat <<EOF
-
-Next:
-  greg aboutme     tell Greg who you are
-  greg train       practice run: talk to it your way and see what it learns
-  greg             chat
-
-If your shell says "greg: command not found", add this to ~/.bashrc and open a
-new terminal:
-  export PATH="\$HOME/.local/bin:\$PATH"
-EOF
+echo
+echo "Next:"
+echo "  anexis aboutme     tell Anexis who you are"
+echo "  anexis train       practice run: talk to it your way and see what it learns"
+echo "  anexis             chat, from any folder"
+echo
+if [ "$ON_PATH" = 0 ]; then
+  echo "The anexis command works in new terminals. In this one, either open a new"
+  echo "terminal or start it from this folder with:  bash start"
+else
+  echo "From this folder you can also start it with:  bash start"
+fi
