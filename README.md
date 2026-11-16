@@ -22,6 +22,7 @@ Then:
 ```bash
 greg doctor      # one line per part: working, or what is missing and the fix
 greg aboutme     # tell Greg who you are
+greg train       # practice run: talk to it your way and see what it learns
 greg             # chat
 ```
 
@@ -33,6 +34,11 @@ You need at least one model source:
 | **Nvidia** (hosted) | Get a key at build.nvidia.com and put `NVIDIA_API_KEY=...` in `~/.greg/.env`. |
 
 With both, Ollama is tried first and Nvidia takes over if it is down, and back again.
+
+Ollama's default context window is small, and when it overflows the model quietly
+loses its instructions. If you have the memory for it, start Ollama with a bigger
+one, for example `OLLAMA_CONTEXT_LENGTH=16384 ollama serve`. Greg also caps how
+much history it sends (`history_chars` in `greg.toml`).
 
 For code creation through Claude: `npm install -g @anthropic-ai/claude-code`, then
 either put `ANTHROPIC_API_KEY=...` in `~/.greg/.env` or run `claude` once to log in.
@@ -69,7 +75,7 @@ newer for the npm tool servers.
 | `/quit` | leave |
 
 Outside the chat: `greg ask "question"` for one answer in a script, `greg memory`,
-`greg tools list`, `greg tools sync`, `greg aboutme import file.yaml`.
+`greg tools list`, `greg tools sync`, `greg aboutme import file.yaml`, `greg train`.
 
 ## How the memory learns
 
@@ -88,8 +94,46 @@ Everything is in one SQLite file, `~/.greg/greg.db`.
    never deletes a memory on its own. Only `/forget` deletes.
 4. **Tools too.** Greg tracks which tools work and which keep failing, and prefers
    the ones that work.
+5. **Standing instructions are always on.** Anything you told Greg about how to
+   behave ("no dashes", "dont ask a bunch of questions") is sent with every
+   message, strongest first. It does not depend on a search finding it.
+6. **Typos are fine.** Recall and tool picking both guess what a misspelled word
+   meant ("chemestry assigment", "serach") and match shortened words ("chem").
+7. **It learns how you talk and think.** From your own messages Greg works out
+   your style (casual or formal, short or long, orders or questions) and tells
+   the model to answer to match. Once you have sent about 20 messages, the upkeep
+   also writes a short note on how you think and what you value, and keeps it up
+   to date. That note is a normal memory, so `/memory` shows it and `/forget`
+   removes it.
 
 You stay in control with `/memory`, `/why`, `/remember` and `/forget`.
+
+## Train it to talk like you
+
+`greg train` talks to Greg the way you talk (fast, no punctuation, misspelled, a
+few asks at once) and then checks what stuck. It uses `training/like_me.yaml`:
+
+1. **Teach.** Things you said you want: no dashes, casual, type first and voice as
+   backup, Claude first for code, build instead of asking questions, always the
+   maxed out version.
+2. **Practice.** Made up sample facts (a chem lab, a work shift) to test recall.
+   These are never kept.
+3. **Probes.** Sloppy questions asked afterwards.
+
+The report scores six things: what was learned, whether repeating something made
+Greg more sure without a second copy, whether a change replaced the old fact,
+whether a typo filled question recalled the right memory, whether your standing
+instructions reach the model on an unrelated topic, and whether the right tool was
+offered.
+
+```bash
+greg train             # practice on a throwaway memory with your real model
+greg train --keep      # the same teaching, written into Greg's real memory
+greg train --offline   # no model needed, checks everything around the model
+```
+
+Edit the pack to add your own lines. Anything in `teach` is safe to keep, so only
+put true things there.
 
 ## About Me
 
@@ -210,7 +254,7 @@ Keys go in `.env` (see `.env.example`), never in `greg.toml`.
 
 ```bash
 uv sync
-uv run pytest        # 174 tests
+uv run pytest        # 233 tests
 uv run ruff check greg tests
 ```
 
@@ -221,7 +265,8 @@ HTTP server, a real MCP test server, and fake `claude` and `piper` programs.
 
 Checked: the whole test suite, plus a real run of `greg serve`, `greg ask`,
 `greg doctor`, `greg aboutme` and the interactive chat against a stand in model
-server speaking the same API as Ollama.
+server speaking the same API as Ollama. One real Claude Code run through Greg's
+own runner (it wrote and ran a file). `greg train --offline`, 32 of 32.
 
 Not checked there, so check with `greg doctor` on your server:
 
@@ -230,16 +275,19 @@ Not checked there, so check with `greg doctor` on your server:
 2. The outside tool servers. Every package name, pinned version and program name
    was checked against npm and PyPI, but the servers themselves were not started.
    `greg tools sync` does that.
-3. A real Claude Code run, and a real microphone.
-4. `scripts/install.sh` as a whole.
+3. `greg train` with a real model. Offline mode proves the storage, recall and
+   tool picking. Only a real model shows how well the learn step pulls facts out
+   of what you say, so run `greg train` once on your server.
+4. A real microphone.
+5. `scripts/install.sh` as a whole.
 
 ## Layout
 
 ```
 greg/config.py        settings
 greg/llm/             Ollama and Nvidia client, failover
-greg/memory/          SQLite store, ranking, learning, upkeep
-greg/core/            the chat loop, app wiring, doctor
+greg/memory/          SQLite store, ranking, learning, style, upkeep
+greg/core/            the chat loop, app wiring, doctor, training run
 greg/tools/           registry, picker, permissions, built ins, MCP client
 greg/coder/           Claude runner, limit detection, fallback coder
 greg/voice/           speech in and out
@@ -248,5 +296,6 @@ greg/server/          HTTP API
 greg/cli/             the chat screen and the greg command
 greg/mcp_server.py    read only memory server for Claude Code
 tools/manifest.yaml   the outside tools, pinned
+training/like_me.yaml the training pack
 docs/                 the design
 ```

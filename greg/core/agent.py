@@ -10,7 +10,8 @@ from datetime import datetime
 from greg.config import Settings
 from greg.llm.provider import ProviderError
 from greg.llm.router import AllProvidersFailed
-from greg.memory.store import Memory
+from greg.memory.store import Memory, quality
+from greg.memory.style import THINKING_KEY, style_lines
 from greg.tools.base import Tool, ToolContext
 from greg.tools.builtin.core import due_soon
 from greg.tools.permissions import decide
@@ -18,6 +19,7 @@ from greg.tools.registry import Registry
 
 MODES = ("general", "school", "work", "project")
 ABOUT_BUDGET = 3000  # characters of About Me always sent
+LESSON_BUDGET = 1500  # characters of standing instructions always sent
 
 SYSTEM = """You are {name}, a personal assistant that lives on your owner's own server. You help with school, work and whatever projects they are thinking through.
 
@@ -30,7 +32,7 @@ How to behave:
 - If the owner declines a tool, do not retry it. Say what you wanted to do and carry on.
 - Never invent facts, sources, file contents or tool results. If you do not know, say so.
 - You learn automatically from the conversation. Call remember only when asked to remember something.
-{about}{recalled}{due}{summary}"""
+{about}{lessons}{style}{recalled}{due}{summary}"""
 
 
 def _block(title: str, lines: list[str]) -> str:
@@ -76,7 +78,41 @@ class Agent:
             used += len(row.text)
         return lines
 
-    def _system(self, session: dict, recalled: list) -> str:
+    def _lessons(self) -> list:
+        """Standing instructions: what the owner told Greg about how to behave.
+        They apply to every reply, so they are always sent, strongest first,
+        instead of waiting for a search to happen to find them."""
+        now = time.time()
+        rows = [m for m in self.memory.list("lesson", 200) if m.key != THINKING_KEY and not m.pinned]
+        kept, used = [], 0
+        for row in sorted(rows, key=lambda m: -quality(m, now)):
+            if used + len(row.text) > LESSON_BUDGET:
+                break
+            kept.append(row)
+            used += len(row.text)
+        return kept
+
+    async def _recall(self, text: str) -> tuple[list, list, object]:
+        """(standing instructions, memories that fit this message, the message as a vector)."""
+        try:
+            embedded = await self.router.embed([text], "query")
+        except Exception:
+            embedded = None
+        tag, query_vec = (embedded[0], embedded[1][0]) if embedded else (None, None)
+        lessons = self._lessons()
+        shown = {m.id for m in lessons}
+        recalled = [
+            m for m in self.memory.search(text, self.settings.recall_k, query_vec, tag)
+            if not m.pinned and m.id not in shown and m.key != THINKING_KEY
+        ]
+        return lessons, recalled, query_vec
+
+    async def system_for(self, text: str) -> str:
+        """The instructions the model would get for this message. Used by `greg train`."""
+        lessons, recalled, _ = await self._recall(text)
+        return self._system({"mode": "general", "summary": ""}, recalled, lessons)
+
+    def _system(self, session: dict, recalled: list, lessons: list) -> str:
         due = [f"{i['title']} ({i['type']}, due {i['due_at']})" for i in due_soon(self.memory)]
         summary = f"\nEarlier in this conversation: {session['summary']}\n" if session["summary"] else ""
         return SYSTEM.format(
@@ -84,6 +120,8 @@ class Agent:
             now=datetime.now().astimezone().strftime("%A %Y-%m-%d %H:%M %Z"),
             mode=session["mode"],
             about=_block("About your owner (always true):", self._about()),
+            lessons=_block("Standing instructions from your owner. Follow them in every reply:", [m.text for m in lessons]),
+            style=_block("How your owner talks and thinks (learned from their own messages):", style_lines(self.memory)),
             recalled=_block(
                 "Things you remember that may matter right now:",
                 [f"[{m.kind}] {m.text}" for m in recalled],
@@ -106,16 +144,8 @@ class Agent:
         history = self._fit(self.memory.history(sid, self.settings.history_messages))
         self.memory.add_message(sid, "user", text)
 
-        try:
-            embedded = await self.router.embed([text], "query")
-        except Exception:
-            embedded = None
-        tag, query_vec = (embedded[0], embedded[1][0]) if embedded else (None, None)
-
-        recalled = [
-            m for m in self.memory.search(text, self.settings.recall_k, query_vec, tag) if not m.pinned
-        ]
-        messages: list[dict] = [{"role": "system", "content": self._system(session, recalled)}]
+        lessons, recalled, query_vec = await self._recall(text)
+        messages: list[dict] = [{"role": "system", "content": self._system(session, recalled, lessons)}]
         messages += [{"role": m["role"], "content": m["content"]} for m in history]
         messages.append({"role": "user", "content": text})
 

@@ -6,6 +6,7 @@ consolidate.py. This file is storage, search and ranking.
 
 from __future__ import annotations
 
+import difflib
 import json
 import math
 import re
@@ -99,6 +100,18 @@ STOPWORDS = frozenset(
 _WORD = re.compile(r"[a-z0-9]+")
 
 
+def close_words(term: str, vocabulary, n: int = 2) -> list[str]:
+    """Known words that a misspelled word most likely meant.
+
+    People almost never get the first letter wrong, so only words starting
+    with the same letter count. That keeps "hello" from being read as "shell".
+    """
+    if len(term) < 4:
+        return []
+    same_start = [w for w in vocabulary if w[0] == term[0]]
+    return difflib.get_close_matches(term, same_start, n=n, cutoff=0.8)
+
+
 def words(text: str) -> list[str]:
     """Meaningful lowercase words of a text, used for search and duplicate checks."""
     return [w for w in _WORD.findall(text.lower()) if w not in STOPWORDS and len(w) > 1]
@@ -161,6 +174,8 @@ class Memory:
             self.db.commit()
         self.db.row_factory = sqlite3.Row
         self._vec_cache: dict[str, tuple[list[int], np.ndarray]] = {}
+        self._words_cache: set[str] | None = None
+        self._data_version = None
 
     def close(self) -> None:
         self.db.close()
@@ -203,6 +218,16 @@ class Memory:
             {"id": r["id"], "role": r["role"], "content": r["content"], "meta": json.loads(r["meta"])}
             for r in reversed(rows)
         ]
+
+    def owner_messages(self, limit: int = 200) -> list[str]:
+        """What the owner typed, newest last, across every conversation."""
+        rows = self.db.execute(
+            "SELECT content FROM messages WHERE role='user' ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [r["content"] for r in reversed(rows)]
+
+    def owner_message_count(self) -> int:
+        return self.db.execute("SELECT COUNT(*) FROM messages WHERE role='user'").fetchone()[0]
 
     def last_message(self, session_id: str, role: str) -> dict | None:
         row = self.db.execute(
@@ -248,6 +273,7 @@ class Memory:
             (kind, text.strip(), _clamp(confidence), _clamp(importance), source, key, int(pinned), now, now),
         )
         self.db.commit()
+        self._words_cache = None
         return cur.lastrowid
 
     def get(self, memory_id: int) -> MemoryRow | None:
@@ -309,6 +335,7 @@ class Memory:
         self.db.execute("UPDATE memories SET superseded_by=?, key=NULL WHERE id=?", (new_id, old_id))
         self.db.commit()
         self._vec_cache.clear()
+        self._words_cache = None
         return new_id
 
     def forget(self, memory_id: int) -> bool:
@@ -317,6 +344,7 @@ class Memory:
         self.db.execute("UPDATE memories SET superseded_by=NULL WHERE superseded_by=?", (memory_id,))
         self.db.commit()
         self._vec_cache.clear()
+        self._words_cache = None
         return cur.rowcount > 0
 
     def mark_used(self, ids: list[int]) -> None:
@@ -365,6 +393,7 @@ class Memory:
         self.db.execute("UPDATE memories SET superseded_by=? WHERE id=?", (strong_id, weak_id))
         self.db.commit()
         self._vec_cache.clear()
+        self._words_cache = None
         self.reinforce(strong_id)
 
     # ---- vectors ----------------------------------------------------------
@@ -414,17 +443,52 @@ class Memory:
 
     # ---- search -----------------------------------------------------------
 
-    def _fts(self, query: str, k: int) -> list[MemoryRow]:
-        terms = list(dict.fromkeys(words(query)))[:24]
-        if not terms:
-            return []
-        match = " OR ".join(f'"{t}"' for t in terms)
+    def _refresh(self) -> None:
+        """Drop cached lists when another process (like `greg train --keep`)
+        has written to the database since this one last looked."""
+        version = self.db.execute("PRAGMA data_version").fetchone()[0]
+        if version != self._data_version:
+            self._data_version = version
+            self._vec_cache.clear()
+            self._words_cache = None
+
+    def _vocabulary(self) -> set[str]:
+        """Every word in a live memory, for guessing what a misspelled word meant."""
+        if self._words_cache is None:
+            rows = self.db.execute("SELECT text FROM memories WHERE superseded_by IS NULL")
+            self._words_cache = {w for r in rows for w in words(r["text"])}
+        return self._words_cache
+
+    def _match(self, expression: str, k: int) -> list[MemoryRow]:
         rows = self.db.execute(
             "SELECT m.* FROM memories_fts f JOIN memories m ON m.id=f.rowid "
             "WHERE memories_fts MATCH ? AND m.superseded_by IS NULL ORDER BY bm25(memories_fts) LIMIT ?",
-            (match, k),
+            (expression, k),
         ).fetchall()
         return [_row(r) for r in rows]
+
+    def _fts(self, query: str, k: int) -> list[MemoryRow]:
+        """Word match. Exact words first. If that leaves room, a looser pass
+        catches misspellings ("assigment") and shortened words ("chem")."""
+        terms = list(dict.fromkeys(words(query)))[:24]
+        if not terms:
+            return []
+        exact = self._match(" OR ".join(f'"{t}"' for t in terms), k)
+        if len(exact) >= k:
+            return exact
+        vocabulary = self._vocabulary()
+        loose: list[str] = []
+        for term in terms:
+            if len(term) < 4:
+                continue
+            loose.append(f'"{term}"*')
+            if term not in vocabulary:
+                loose += [f'"{w}"' for w in close_words(term, vocabulary)]
+        if not loose:
+            return exact
+        seen = {r.id for r in exact}
+        extra = [r for r in self._match(" OR ".join(dict.fromkeys(loose)), k) if r.id not in seen]
+        return (exact + extra)[:k]
 
     def search(
         self,
@@ -436,6 +500,7 @@ class Memory:
     ) -> list[MemoryRow]:
         """Best matching memories: word match and meaning match fused, then
         weighted by how trustworthy and useful each memory has been."""
+        self._refresh()
         relevance: dict[int, float] = {}
         found: dict[int, MemoryRow] = {}
         for rank, row in enumerate(self._fts(query, k * 3)):

@@ -33,6 +33,7 @@ embed = "nvidia/nv-embedqa-e5-v5"
 [memory]
 recall_k = 8              # memories pulled into each reply
 history_messages = 24     # how much of the conversation the model sees
+history_chars = 24000     # and its size limit. Lower it for small context models.
 learn = true              # learn from every exchange
 consolidate_minutes = 60  # how often the upkeep runs
 

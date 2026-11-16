@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from greg.memory.store import Memory
+from greg.memory.style import distill_style
 
 SUMMARY_PROMPT = (
     "Summarize this conversation between the owner and their assistant in at most four "
@@ -12,7 +13,8 @@ SUMMARY_PROMPT = (
 
 
 async def consolidate(memory: Memory, router) -> dict:
-    report = {"summaries": 0, "embedded": 0, "merged": 0, "decayed": 0}
+    report = {"summaries": 0, "embedded": 0, "merged": 0, "decayed": 0, "style": 0}
+    report["style"] = int(await distill_style(memory, router))
 
     for session in memory.sessions_needing_summary():
         fresh = memory.history(session["id"], limit=60, after_id=session["summarized_upto"])

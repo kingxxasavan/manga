@@ -168,7 +168,7 @@ async def github_read_file(args: dict, ctx: ToolContext) -> str:
 TOOLS = [
     Tool("web_search", "Search the web. Returns titles, links and short summaries.",
          params(["query"], query=text("Search words"), max_results={"type": "integer"}), web_search),
-    Tool("web_fetch", "Fetch a web page and return its readable text.",
+    Tool("web_fetch", "Open a link or URL and read the web page or site. Returns what the page says as readable text.",
          params(["url"], url=text("Page address")), web_fetch),
     Tool("github_search_repos", "Search GitHub for repositories. Good for finding reference projects and libraries.",
          params(["query"], query=text("Search words, GitHub search syntax allowed")), github_search_repos),

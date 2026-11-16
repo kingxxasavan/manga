@@ -344,3 +344,20 @@ Each step leaves something that runs and is tested.
    model names could not be confirmed from the build machine.
 9. The tool servers were verified against the package registries but not
    started on the build machine. `greg tools sync` does that on the server.
+
+## Second pass: system check and training
+
+1. Fixed after a system check: Claude's real five hour limit wording, tool calls
+   that share a stream index, models with no tool support, broken tool
+   arguments, empty replies, history overflowing a small context window, and
+   paths hidden under unusual argument names.
+2. Standing instructions (lessons) are sent with every message instead of only
+   when a search finds them.
+3. Recall and tool picking tolerate misspelled and shortened words.
+4. Greg learns the owner's writing style from their own messages, and the upkeep
+   writes a note on how they think.
+5. `greg train` plays a pack of owner style messages through the real chat and
+   learn steps and scores the result. `training/like_me.yaml` holds what the
+   owner said they want, plus made up practice facts that are never kept.
+6. Ollama's default context window is small. `history_chars` bounds what is
+   sent, and raising `OLLAMA_CONTEXT_LENGTH` on the server is worth doing.

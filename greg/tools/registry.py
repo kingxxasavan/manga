@@ -11,7 +11,7 @@ import math
 
 import numpy as np
 
-from greg.memory.store import words
+from greg.memory.store import close_words, words
 from greg.tools.base import Tool
 
 
@@ -20,16 +20,24 @@ class Registry:
         self._tools: dict[str, Tool] = {}
         self._words: dict[str, set[str]] = {}
         self._name_words: dict[str, set[str]] = {}
+        self._vocab: set[str] | None = None
 
     def add(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
         name_words = set(words(tool.name.replace("_", " ").replace("-", " ")))
         self._name_words[tool.name] = name_words
         self._words[tool.name] = name_words | set(words(tool.description))
+        self._vocab = None
 
     def remove_source(self, source: str) -> None:
         for name in [n for n, t in self._tools.items() if t.source == source]:
             del self._tools[name], self._words[name], self._name_words[name]
+        self._vocab = None
+
+    def _vocabulary(self) -> set[str]:
+        if self._vocab is None:
+            self._vocab = set().union(*self._words.values()) if self._words else set()
+        return self._vocab
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
@@ -42,6 +50,10 @@ class Registry:
 
     def _scores(self, query: str, query_vec=None, stats: dict | None = None) -> dict[str, float]:
         terms = set(words(query))
+        known = self._vocabulary()
+        for term in list(terms):
+            if term not in known:  # probably misspelled: "serach", "calculater"
+                terms.update(close_words(term, known))
         total = max(len(self._tools), 1)
         scores: dict[str, float] = {}
         if query_vec is not None:

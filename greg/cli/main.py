@@ -162,6 +162,65 @@ async def cmd_tools(settings: Settings, args) -> None:
         sys.exit(1)
 
 
+async def cmd_train(settings: Settings, args) -> None:
+    """Talk to Greg the way its owner talks, then check what stuck."""
+    import shutil
+    import tempfile
+    from pathlib import Path
+
+    from rich.markup import escape
+
+    from greg.config import REPO_ROOT
+    from greg.core.app import GregApp
+    from greg.core.train import OfflineRouter, load_pack, practice_settings, run_training
+
+    if args.keep and args.offline:
+        sys.exit("--keep needs a real model, so it cannot be used with --offline.")
+    try:
+        pack = load_pack(Path(args.pack) if args.pack else REPO_ROOT / "training" / "like_me.yaml")
+    except (OSError, ValueError) as e:
+        sys.exit(f"Could not read the training pack: {e}")
+
+    scratch = None if args.keep else tempfile.mkdtemp(prefix="greg-train-")
+    target = settings if args.keep else practice_settings(settings, Path(scratch))
+    greg = GregApp(target, router=OfflineRouter(pack) if args.offline else None)
+    kind = "for keeps, into the real memory" if args.keep else "practice, on a throwaway memory"
+    model = "no model (offline stand in)" if args.offline else " + ".join(p.name for p in greg.router.providers) or "no model"
+    console.print(f"\n[bold] training run[/bold]   {kind}   {escape(model)}\n", highlight=False)
+    try:
+        report = await run_training(
+            greg, pack, keep=args.keep,
+            say=lambda line: console.print(f"[dim] {escape(line)}[/dim]", highlight=False),
+        )
+    finally:
+        await greg.stop()
+        if scratch:
+            shutil.rmtree(scratch, ignore_errors=True)
+
+    names = {"learned": "learned from what was said", "reinforced": "got more sure when repeated",
+             "replaced": "updated when something changed", "recall": "recalled later from a sloppy question",
+             "prompt": "standing instructions reach the model", "tools": "right tool offered"}
+    for group, (done, total) in report.counts().items():
+        console.print(f"\n [bold]{names[group]}[/bold]   {done} of {total}", highlight=False)
+        for c in (c for c in report.checks if c.group == group):
+            mark = "[green]ok  [/green]" if c.ok else "[red]MISS[/red]"
+            console.print(f"  {mark} {escape(c.label)}  [dim]{escape(c.detail)}[/dim]", highlight=False)
+    if report.style:
+        console.print("\n [bold]how it reads you[/bold]", highlight=False)
+        for line in report.style:
+            console.print(f"  [dim]{escape(line)}[/dim]", highlight=False)
+    for error in dict.fromkeys(report.errors):
+        console.print(f"\n [red]{escape(error)}[/red]", highlight=False)
+    done, total = report.score()
+    console.print(f"\n [bold]score {done} of {total}[/bold]", highlight=False)
+    if args.offline:
+        console.print("[dim] Offline run: this checked everything around the model, not the model itself.[/dim]")
+    elif not args.keep:
+        console.print("[dim] Nothing was kept. Happy with it? Run `greg train --keep`.[/dim]")
+    if report.failures():
+        sys.exit(1)
+
+
 async def cmd_memory(settings: Settings, args) -> None:
     client = await ensure_server(settings)
     for m in await client.memories(" ".join(args.query)):
@@ -188,6 +247,10 @@ def main() -> None:
     tools.add_argument("action", choices=["sync", "list"])
     memory = sub.add_parser("memory", help="list or search what Greg remembers")
     memory.add_argument("query", nargs="*")
+    train = sub.add_parser("train", help="talk to Greg your way and check what it learns")
+    train.add_argument("--keep", action="store_true", help="write what is taught into the real memory")
+    train.add_argument("--offline", action="store_true", help="no model, checks everything around it")
+    train.add_argument("--pack", help="another training pack file")
     sub.add_parser("mcp", help="memory server for Claude Code (used by `claude mcp add`)")
     args = parser.parse_args()
 
@@ -202,7 +265,7 @@ def main() -> None:
         return cmd_mcp(settings, args)
     handler = {
         None: cmd_chat, "ask": cmd_ask, "doctor": cmd_doctor, "aboutme": cmd_aboutme,
-        "tools": cmd_tools, "memory": cmd_memory,
+        "tools": cmd_tools, "memory": cmd_memory, "train": cmd_train,
     }[args.command]
     try:
         asyncio.run(handler(settings, args))

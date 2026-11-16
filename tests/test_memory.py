@@ -141,3 +141,15 @@ def test_data_survives_reopening_the_database(settings):
     assert texts(m2.search("persists")) == ["Persists across restarts"]
     assert m2.kv_get("k") == {"a": 1}
     m2.close()
+
+
+def test_a_change_made_by_another_process_is_seen_without_a_restart(settings):
+    from greg.memory.store import Memory
+
+    server, trainer = Memory(settings.db_path), Memory(settings.db_path)
+    server.add("fact", "Favorite food is ramen")
+    assert server.search("discrod") == []  # warms the server's word list
+    trainer.add("project", "Building a Discord bot in Python")
+    assert [m.text for m in server.search("my discrod bot")] == ["Building a Discord bot in Python"]
+    server.close()
+    trainer.close()

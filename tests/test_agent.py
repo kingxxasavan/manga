@@ -204,3 +204,22 @@ async def test_a_crash_while_learning_is_logged_and_never_reaches_the_owner(sett
     await agent.drain()
     assert result["text"] == "Nice." and events[-1]["type"] == "done"
     assert memory.events()[0]["kind"] == "learn_failed" and "disk full" in memory.events()[0]["error"]
+
+
+async def test_standing_instructions_reach_the_model_even_when_the_message_is_unrelated(settings, memory):
+    memory.add("lesson", "Never use dashes when writing to them")
+    memory.add("fact", "Favorite pizza topping is mushroom")
+    agent, router, _ = build(settings, memory, "Dogs are great.")
+    await turn(agent, "write me a paragraph about dogs")
+    assert "Never use dashes" in router.system() and "mushroom" not in router.system()
+    assert router.system().count("Never use dashes") == 1
+
+
+async def test_only_the_strongest_instructions_fit_when_there_are_too_many(settings, memory):
+    for i in range(60):
+        memory.add("lesson", f"Weak instruction number {i} " + "x" * 80, confidence=0.3)
+    memory.add("lesson", "The one that matters most", confidence=1.0, importance=1.0)
+    agent, router, _ = build(settings, memory, "ok")
+    await turn(agent, "hello")
+    assert "The one that matters most" in router.system()
+    assert router.system().count("Weak instruction") < 30
