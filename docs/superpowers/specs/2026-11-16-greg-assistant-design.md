@@ -124,7 +124,7 @@ greg/
   mcp_server.py    read only memory server for Claude Code
 tools/manifest.yaml       every outside tool server, pinned
 profile/about_me.example.yaml
-scripts/install.sh        one shot setup
+install.sh                one shot setup, opens the setup window
 scripts/greg.service      systemd unit
 tests/
 ```
@@ -194,7 +194,7 @@ deadlines, reminders, time and math, memory tools.
 
 **From GitHub, through MCP:** `tools/manifest.yaml` lists each server with its
 source repo, how to launch it, a pinned version, the keys it needs, a risk tier
-and an on or off switch. `scripts/install.sh` pulls them onto the server. The
+and an on or off switch. `install.sh` pulls them onto the server. The
 starting set is the maintained reference servers (filesystem, git, fetch,
 sequential thinking, time), the GitHub server, a browser automation server, a
 library docs server, and school and research ones (papers, Wikipedia, video
@@ -361,3 +361,18 @@ Each step leaves something that runs and is tested.
    owner said they want, plus made up practice facts that are never kept.
 6. Ollama's default context window is small. `history_chars` bounds what is
    sent, and raising `OLLAMA_CONTEXT_LENGTH` on the server is worth doing.
+
+## Third pass: installer and setup window
+
+1. `install.sh` at the top of the repo installs everything in six steps and can
+   be run again safely. `--yes` asks nothing.
+2. `greg setup` is the setup window: preset (max, balanced, light, cloud, with
+   the best fit for the machine marked), keys with hidden input and auto fill
+   from the environment, options, and what to install. Every step can be
+   skipped and nothing is written until the summary is confirmed.
+3. The window writes a plan file of plain values. The script reads it line by
+   line and never runs it as code.
+4. Node 24 is installed into the home folder when missing, with its checksum
+   verified, and tool servers prefer it.
+5. `greg stop` stops the server. A switch turns the outside tool servers off.
+6. Three tool servers that did not start in a test run are off by default.

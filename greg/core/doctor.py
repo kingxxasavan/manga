@@ -7,6 +7,7 @@ import re
 import shutil
 
 from greg.tools.builtin.system import run_process
+from greg.tools.mcp_client import tool_path
 
 
 def check(part: str, ok: bool, detail: str, fix: str = "", optional: bool = False) -> dict:
@@ -14,11 +15,12 @@ def check(part: str, ok: bool, detail: str, fix: str = "", optional: bool = Fals
     return {"part": part, "ok": ok, "detail": detail, "fix": "" if ok else fix, "optional": optional}
 
 
-async def _version(program: str) -> str | None:
-    if not shutil.which(program):
+async def _version(program: str, path: str | None = None) -> str | None:
+    found = shutil.which(program, path=path)
+    if not found:
         return None
     try:
-        code, output = await run_process([program, "--version"], ".", 15)
+        code, output = await run_process([found, "--version"], ".", 15)
     except OSError:
         return None
     return output.strip().splitlines()[0] if code == 0 and output.strip() else None
@@ -28,7 +30,7 @@ async def doctor(greg) -> list[dict]:
     settings = greg.settings
     out: list[dict] = []
 
-    problems = settings.problems()
+    problems = settings.problems() + settings.warnings()
     out.append(check("config", not problems, "; ".join(problems) or "ok", "see .env.example and greg.toml.example"))
 
     for provider in await greg.router.status():
@@ -63,12 +65,14 @@ async def doctor(greg) -> list[dict]:
     else:
         out.append(check("claude code", True, f"{claude}. Login is checked the first time it codes."))
 
-    node = await _version("node")
+    node = await _version("node", tool_path())
     major = int(re.search(r"v?(\d+)", node).group(1)) if node and re.search(r"v?(\d+)", node) else 0
-    out.append(check("node", major >= 24, node or "not installed", "install Node 24 or newer, the npm tool servers need it"))
+    out.append(check("node", major >= 24, node or "not installed", "run ./install.sh again and say yes to Node, the npm tool servers need version 24 or newer"))
     uvx = shutil.which("uvx")
     out.append(check("uv", bool(uvx), uvx or "not installed", "install uv, the Python tool servers are run with uvx"))
 
+    if not settings.outside_tools:
+        out.append(check("outside tools", True, "switched off, only the built in tools are used"))
     for name, info in sorted(greg.mcp.status.items()):
         state = info["state"]
         if state == "running":
@@ -81,7 +85,7 @@ async def doctor(greg) -> list[dict]:
             out.append(check(f"tool: {name}", False, info.get("error", state), "run `greg tools sync` to see the full error"))
 
     whisper = importlib.util.find_spec("faster_whisper") is not None
-    out.append(check("voice in", whisper, "speech to text ready" if whisper else "faster-whisper not installed", "uv sync --extra voice", optional=True))
+    out.append(check("voice in", whisper, "speech to text ready" if whisper else "faster-whisper not installed", "./install.sh and say yes to voice", optional=True))
     piper = shutil.which(settings.piper_bin)
-    out.append(check("voice out", bool(piper), piper or "piper not installed", "uv tool install piper-tts", optional=True))
+    out.append(check("voice out", bool(piper), piper or "piper not installed", "./install.sh and say yes to voice", optional=True))
     return out

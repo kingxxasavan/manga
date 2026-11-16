@@ -17,8 +17,14 @@ def audio_ready() -> tuple[bool, str]:
         import sounddevice as sd
 
         devices = sd.query_devices()
+    except ImportError:
+        return False, "Voice is not installed on this machine. Run ./install.sh and say yes to voice."
+    except OSError as e:
+        if "portaudio" in str(e).lower():
+            return False, "The audio library is missing on this machine. Install it with: sudo apt install libportaudio2"
+        return False, f"No audio on this machine ({e})."
     except Exception as e:
-        return False, f"No audio on this machine ({type(e).__name__}). Voice needs `uv sync --extra voice` and a microphone here."
+        return False, f"No audio on this machine ({type(e).__name__})."
     if not any(d.get("max_input_channels", 0) > 0 for d in devices):
         return False, "No microphone found on this machine."
     return True, ""

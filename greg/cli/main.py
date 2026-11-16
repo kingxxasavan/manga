@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
+import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import httpx
 from rich.console import Console
@@ -59,6 +62,58 @@ async def ensure_server(settings: Settings) -> GregClient:
     sys.exit(f"The server did not come up. See {settings.home / 'server.log'}")
 
 
+def pid_file(home) -> Path:
+    return Path(home) / "server.pid"
+
+
+def write_pid(home, pid: int) -> None:
+    pid_file(home).write_text(str(pid))
+
+
+def stop_server(home) -> bool:
+    """Stops the server started from this home folder. True if one was stopped.
+
+    The number in the pid file is only trusted when that process really is a
+    Greg server, so a stale file can never get some other program killed.
+    """
+    path = pid_file(home)
+    try:
+        pid = int(path.read_text().strip())
+        command = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except (OSError, ValueError):
+        path.unlink(missing_ok=True)
+        return False
+    words = [part.rsplit(b"/", 1)[-1] for part in command]
+    if b"serve" not in words or not any(w in (b"greg", b"greg.exe") for w in words):
+        path.unlink(missing_ok=True)
+        return False
+    def running() -> bool:
+        try:  # third field of /proc/<pid>/stat is the state, Z means already dead
+            return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+        except (OSError, IndexError):
+            return False
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+        for _ in range(100):
+            if not running():
+                break
+            time.sleep(0.1)
+        else:
+            os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    path.unlink(missing_ok=True)
+    return True
+
+
+def cmd_stop(settings: Settings, args) -> None:
+    if stop_server(settings.home):
+        console.print(" Stopped. It starts again the next time you open the chat.")
+    else:
+        console.print(" No server from this setup was running.")
+
+
 def cmd_serve(settings: Settings, args) -> None:
     import uvicorn
 
@@ -68,7 +123,43 @@ def cmd_serve(settings: Settings, args) -> None:
     problems = settings.problems()
     if problems:
         sys.exit("Cannot start:\n" + "\n".join(f"  {p}" for p in problems))
-    uvicorn.run(create_app(GregApp(settings)), host=settings.host, port=settings.port, log_level="warning")
+    settings.home.mkdir(parents=True, exist_ok=True)
+    write_pid(settings.home, os.getpid())
+    try:
+        uvicorn.run(create_app(GregApp(settings)), host=settings.host, port=settings.port, log_level="warning")
+    finally:
+        pid_file(settings.home).unlink(missing_ok=True)
+
+
+def cmd_setup(settings: Settings, args) -> None:
+    """The setup window. Exit code 3 means the owner cancelled."""
+    from greg.cli.setup import detect_machine, run_wizard
+
+    interactive = sys.stdin.isatty() and not args.yes
+    if not interactive and not args.yes:
+        console.print(" No terminal to ask questions on, so the suggested choices are used.", highlight=False)
+
+    def ask(question: str, default: str = "", secret: bool = False) -> str:
+        from prompt_toolkit import prompt
+
+        return prompt(f" {question}", is_password=secret)
+
+    def say(text: str) -> None:
+        console.print(text, markup=False, highlight=False)
+
+    try:
+        result = run_wizard(
+            settings.home, dict(settings.env), detect_machine(), ask, say, preset=args.preset, yes=not interactive
+        )
+    except ValueError as e:
+        sys.exit(str(e))
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n Cancelled. Nothing was changed.")
+        sys.exit(3)
+    if result.cancelled:
+        sys.exit(3)
+    if not args.from_installer:
+        say("  To install what you picked, run: ./install.sh --no-setup")
 
 
 async def cmd_chat(settings: Settings, args) -> None:
@@ -237,6 +328,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="greg", description="Your personal assistant. Run with no arguments to chat.")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("serve", help="run the server (the chat starts it for you on this machine)")
+    sub.add_parser("stop", help="stop the server, for example after changing keys or settings")
+    setup = sub.add_parser("setup", help="the setup window: preset, keys, options")
+    setup.add_argument("--preset", help="max, balanced, light or cloud")
+    setup.add_argument("--yes", "-y", action="store_true", help="ask nothing, take every suggestion")
+    setup.add_argument("--from-installer", action="store_true", help=argparse.SUPPRESS)
     ask = sub.add_parser("ask", help="one question, one answer")
     ask.add_argument("text", nargs="+")
     sub.add_parser("doctor", help="check that every part works")
@@ -263,6 +359,10 @@ def main() -> None:
         return cmd_serve(settings, args)
     if args.command == "mcp":
         return cmd_mcp(settings, args)
+    if args.command == "setup":
+        return cmd_setup(settings, args)
+    if args.command == "stop":
+        return cmd_stop(settings, args)
     handler = {
         None: cmd_chat, "ask": cmd_ask, "doctor": cmd_doctor, "aboutme": cmd_aboutme,
         "tools": cmd_tools, "memory": cmd_memory, "train": cmd_train,

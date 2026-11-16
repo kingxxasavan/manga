@@ -43,7 +43,8 @@ def test_manifest_builds_pinned_launch_commands(settings):
   - {name: word, type: pypi, package: office-word-mcp-server, version: "1.1.11", bin: word_mcp_server}
 """)
     fs, git, word = load_manifest(settings)
-    assert launch_command(fs, settings) == ["npx", "-y", "@scope/server-fs@2.3.0", str(settings.workspace)]
+    npx, *rest = launch_command(fs, settings)
+    assert Path(npx).name == "npx" and rest == ["-y", "@scope/server-fs@2.3.0", str(settings.workspace)]
     assert launch_command(git, settings) == ["uvx", "--from", "mcp-server-git==2026.11.11", "mcp-server-git"]
     assert launch_command(word, settings)[-1] == "word_mcp_server"
 
@@ -123,3 +124,33 @@ async def test_stopping_removes_the_tools(settings):
     await manager.start()
     await manager.stop()
     assert registry.get("echo_echo") is None
+
+
+def test_tool_servers_prefer_the_node_the_installer_put_in_the_home_folder(settings, tmp_path, monkeypatch):
+    from greg.tools.mcp_client import _server_env, node_dir
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    manifest(settings, "servers:\n  - {name: fs, type: npm, package: p, version: '1'}\n")
+    spec = load_manifest(settings)[0]
+    assert str(node_dir()) not in _server_env(spec, settings)["PATH"]  # not there yet
+    node_dir().mkdir(parents=True)
+    (node_dir() / "npx").write_text("#!/bin/sh\n")
+    (node_dir() / "npx").chmod(0o755)
+    assert _server_env(spec, settings)["PATH"].startswith(str(node_dir()) + ":")
+    assert launch_command(spec, settings)[0] == str(node_dir() / "npx")
+
+
+async def test_with_outside_tools_off_no_tool_server_is_started(settings):
+    import asyncio
+
+    from greg.core.app import GregApp
+    from tests.fakes import FakeRouter
+
+    manifest(settings, "servers:\n" + echo_entry())
+    settings.outside_tools = False
+    settings.consolidate_minutes = 0
+    greg = GregApp(settings, router=FakeRouter())
+    await greg.start()
+    await asyncio.sleep(0.3)
+    assert greg.mcp.status == {} and greg.registry.get("echo_echo") is None
+    await greg.stop()

@@ -53,7 +53,8 @@ class GregApp:
 
     async def _start_tools(self) -> None:
         try:
-            await self.mcp.start()
+            if self.settings.outside_tools:
+                await self.mcp.start()
             await self.registry.embed_all(self.router)
         except Exception as e:
             self.memory.log("tools_failed", {"error": str(e)[:300]})

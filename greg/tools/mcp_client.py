@@ -11,7 +11,9 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import shutil
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import yaml
 from mcp import Client, StdioServerParameters
@@ -85,10 +87,22 @@ def _fill(value: str, settings: Settings) -> str:
     return re.sub(r"\$\{(\w+)\}", lambda m: settings.env.get(m.group(1), ""), value)
 
 
+def node_dir() -> Path:
+    """Where install.sh puts its own Node when the system one is missing or too old."""
+    return Path.home() / ".local" / "share" / "greg" / "node" / "bin"
+
+
+def tool_path() -> str:
+    """PATH for tool servers, with the installer's Node first when it exists."""
+    current = os.environ.get("PATH", "")
+    return f"{node_dir()}:{current}" if node_dir().is_dir() else current
+
+
 def launch_command(spec: ServerSpec, settings: Settings) -> list[str]:
     args = [_fill(str(a), settings) for a in spec.args]
     if spec.type == "npm":
-        return ["npx", "-y", f"{spec.package}@{spec.version}", *args]
+        npx = shutil.which("npx", path=tool_path()) or "npx"
+        return [npx, "-y", f"{spec.package}@{spec.version}", *args]
     if spec.type == "pypi":
         return ["uvx", "--from", f"{spec.package}=={spec.version}", spec.bin or spec.package, *args]
     return [_fill(str(c), settings) for c in spec.command] + args
@@ -96,6 +110,7 @@ def launch_command(spec: ServerSpec, settings: Settings) -> list[str]:
 
 def _server_env(spec: ServerSpec, settings: Settings) -> dict[str, str]:
     env = get_default_environment()
+    env["PATH"] = tool_path()
     for key in PLUMBING:
         if os.environ.get(key):
             env[key] = os.environ[key]

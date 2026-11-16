@@ -85,3 +85,37 @@ def test_speakable_strips_markup_code_and_links():
 
 def test_speakable_keeps_long_replies_short():
     assert len(speakable("word " * 2000)) <= 1300
+
+
+def test_a_missing_audio_library_is_named_with_the_command_that_fixes_it(monkeypatch):
+    import builtins
+
+    from greg.cli.audio import audio_ready
+
+    real_import = builtins.__import__
+
+    def no_portaudio(name, *args, **kw):
+        if name == "sounddevice":
+            raise OSError("PortAudio library not found")
+        return real_import(name, *args, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", no_portaudio)
+    ok, why = audio_ready()
+    assert not ok and "libportaudio2" in why
+
+
+def test_no_voice_packages_at_all_points_at_the_installer(monkeypatch):
+    import builtins
+
+    from greg.cli.audio import audio_ready
+
+    real_import = builtins.__import__
+
+    def missing(name, *args, **kw):
+        if name == "sounddevice":
+            raise ModuleNotFoundError("No module named 'sounddevice'")
+        return real_import(name, *args, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", missing)
+    ok, why = audio_ready()
+    assert not ok and "install.sh" in why

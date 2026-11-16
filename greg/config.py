@@ -81,6 +81,8 @@ class Settings:
     learn: bool = True
     consolidate_minutes: int = 60
 
+    outside_tools: bool = True  # start the tool servers in tools/manifest.yaml
+
     max_steps: int = 8
     max_tools: int = 12
     tool_output_chars: int = 6000
@@ -127,9 +129,16 @@ class Settings:
                 "No token set. Listening beyond localhost needs GREG_TOKEN so strangers "
                 "cannot talk to your assistant."
             )
-        if not self.active_providers():
-            out.append("No model provider is usable. Start Ollama or set NVIDIA_API_KEY.")
         return out
+
+    def warnings(self) -> list[str]:
+        """Things that leave Greg unable to talk but should not stop the server,
+        so `greg doctor` can still run and explain what is missing."""
+        if self.active_providers():
+            return []
+        waiting = [p.api_key_env for p in self.providers if p.api_key_env]
+        hint = f"Add {' or '.join(waiting)} to your .env" if waiting else "Add a provider in greg.toml"
+        return [f"No model is set up yet, so Greg cannot answer. {hint}, or run ./install.sh again."]
 
 
 def _provider(raw: Mapping, env: Mapping[str, str]) -> Provider:
@@ -193,7 +202,7 @@ def load_settings(env: Mapping[str, str] | None = None, config_path=_UNSET) -> S
         if key in cfg:
             flat[key] = cfg[key]
     flat.update({k: v for k, v in section("server").items() if k in ("host", "port")})
-    for name in ("memory", "agent", "coder", "voice", "llm"):
+    for name in ("memory", "agent", "coder", "voice", "llm", "tools"):
         flat.update(section(name))
     flat["permissions"] = dict(section("permissions"))
     if "providers" in cfg:
@@ -205,6 +214,8 @@ def load_settings(env: Mapping[str, str] | None = None, config_path=_UNSET) -> S
         flat["host"] = merged["GREG_HOST"]
     if "GREG_PORT" in merged:
         flat["port"] = int(merged["GREG_PORT"])
+    if merged.get("GREG_OUTSIDE_TOOLS", "").lower() in ("0", "false", "no", "off"):
+        flat["outside_tools"] = False
     flat["token"] = merged.get("GREG_TOKEN", "")
 
     known = Settings.__dataclass_fields__

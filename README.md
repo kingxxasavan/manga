@@ -14,8 +14,50 @@ On the server (Linux):
 
 ```bash
 git clone <this repo> greg && cd greg
-./scripts/install.sh            # add --voice if you want voice
+./install.sh
 ```
+
+That installs Greg and opens the setup window. Four short steps, and Enter always
+takes the suggestion or skips:
+
+1. **Preset.** It looks at your machine and marks the best fit.
+
+   | Preset | What you get |
+   |---|---|
+   | Max | Biggest local models, widest memory, voice on. Wants a 16 GB GPU. |
+   | Balanced | Good local models for an 8 GB GPU, Nvidia as backup. |
+   | Light | Small local models for a machine with no GPU. |
+   | Cloud | No local model. Everything on Nvidia's hosted models. |
+
+2. **Keys.** Paste and press Enter, typing stays hidden. A key already in your
+   environment is filled in for you. Enter skips or keeps, a single `-` removes.
+3. **Options.** Name, voice, reaching it from other machines (makes the token
+   for you), running in the background.
+4. **What to install.** Ollama and the models, Node, Claude Code, the tool
+   servers. Say n to skip any. What is already there is not offered again.
+
+Nothing is saved until you say yes on the summary. Then the script installs what
+you picked and finishes with a checkup.
+
+```bash
+./install.sh --yes               # ask nothing: best preset, keys from your environment
+./install.sh --preset cloud      # pick the preset up front
+./install.sh --no-setup          # skip the window, install your last choices again
+./install.sh --skip-models       # no model downloads this time
+./install.sh --skip-tools        # no tool server downloads this time
+greg setup                       # just the window, to change settings later
+greg stop                        # restart is: stop, then open the chat again
+```
+
+Hands free, with keys from the environment (never pass a key as an argument, those
+land in your shell history):
+
+```bash
+NVIDIA_API_KEY=nvapi-... ANTHROPIC_API_KEY=sk-ant-... ./install.sh --yes
+```
+
+Keys are saved to `~/.greg/.env`, readable only by you. Settings go to
+`~/.greg/greg.toml`, and an old one is backed up first.
 
 Then:
 
@@ -44,8 +86,8 @@ For code creation through Claude: `npm install -g @anthropic-ai/claude-code`, th
 either put `ANTHROPIC_API_KEY=...` in `~/.greg/.env` or run `claude` once to log in.
 Without it Greg still codes, using its own model.
 
-Other things the install script checks for: `uv` (it installs this), and Node 24 or
-newer for the npm tool servers.
+The installer puts `uv` and Node 24 in your home folder when they are missing. No
+root needed, except for Ollama's own installer.
 
 ## Using it
 
@@ -157,12 +199,13 @@ Three kinds.
 calculator, notes, todos, assignments, reminders, memory.
 
 **From GitHub:** `tools/manifest.yaml` lists 30 MCP servers with a pinned version
-each. 19 run with no setup: files, git, step by step thinking, time, calculator,
-page fetch, DuckDuckGo search, library docs, DeepWiki, Wikipedia, arXiv, paper
-search, YouTube transcripts, browser automation, file conversion, Word,
-PowerPoint, Excel and charts. 6 turn on when you add their key to `.env`: GitHub,
-Notion, Brave, Tavily, Firecrawl, Exa. 5 are listed but off until you flip
-`enabled`: Google Workspace, Chrome DevTools, Jupyter, Zotero, Desktop Commander.
+each. 16 run with no setup: files, git, step by step thinking, time, calculator,
+page fetch, DuckDuckGo search, library docs, DeepWiki, Wikipedia, arXiv, YouTube
+transcripts, browser automation, Word, Excel and charts. 6 turn on when you add
+their key: GitHub, Notion, Brave, Tavily, Firecrawl, Exa. 8 are listed but off
+until you flip `enabled`: Google Workspace, Chrome DevTools, Jupyter, Zotero,
+Desktop Commander, and three that did not start in a test run (file conversion,
+PowerPoint, paper search).
 
 None of that code is copied into this repo. `greg tools sync` downloads each
 server at its pinned version and checks that it starts. To add a tool, add an
@@ -209,7 +252,7 @@ writes your code.
 
 ## Voice
 
-Install with `./scripts/install.sh --voice`. In the chat, `/voice` turns it on.
+Say yes to voice in the setup window. In the chat, `/voice` turns it on.
 Press Enter on an empty line to talk, Enter again to stop. What Greg heard shows
 as text, the reply streams as text and is read aloud.
 
@@ -254,7 +297,7 @@ Keys go in `.env` (see `.env.example`), never in `greg.toml`.
 
 ```bash
 uv sync
-uv run pytest        # 233 tests
+uv run pytest        # 279 tests
 uv run ruff check greg tests
 ```
 
@@ -272,14 +315,17 @@ Not checked there, so check with `greg doctor` on your server:
 
 1. A real Ollama or Nvidia model. The default model names are in
    `greg.toml.example`. `greg doctor` tells you if one is missing.
-2. The outside tool servers. Every package name, pinned version and program name
-   was checked against npm and PyPI, but the servers themselves were not started.
-   `greg tools sync` does that.
+2. The outside tool servers, properly. 15 of them started in one test run. Three
+   did not (file conversion, PowerPoint, paper search) and are switched off in the
+   manifest. DeepWiki could not be reached from the build machine. Run
+   `greg tools sync` to see how they do on yours.
 3. `greg train` with a real model. Offline mode proves the storage, recall and
    tool picking. Only a real model shows how well the learn step pulls facts out
    of what you say, so run `greg train` once on your server.
 4. A real microphone.
-5. `scripts/install.sh` as a whole.
+5. Installing Ollama, pulling models, voice and the background service. The rest
+   of `install.sh` was run for real in a throwaway home folder, including the
+   Node 24 download.
 
 ## Layout
 
