@@ -49,7 +49,7 @@ async def ensure_server(settings: Settings) -> AnexisClient:
     settings.home.mkdir(parents=True, exist_ok=True)
     # Detached on purpose: the server keeps running after this chat window closes.
     with open(settings.home / "server.log", "a") as log:
-        subprocess.Popen(  # noqa: ASYNC220
+        subprocess.Popen(
             [sys.executable, "-m", "anexis", "serve"], stdout=log, stderr=log,
             stdin=subprocess.DEVNULL, **spawn_kwargs(detached=True),
         )
@@ -120,6 +120,42 @@ def cmd_serve(settings: Settings, args) -> None:
         pid_file(settings.home).unlink(missing_ok=True)
     # 75 asks the supervisor (`anexis desktop`) to start the brain again.
     sys.exit(getattr(app.state, "exit_code", 0))
+
+
+def cmd_desktop(settings: Settings, args) -> None:
+    """Runs the brain for the desktop app or for `anexis ui`: always with a
+    token, restarted when its code changes."""
+    import threading
+    import webbrowser
+
+    from anexis.desktop.supervisor import Supervisor
+    from anexis.desktop.token import ensure_token
+
+    problems = settings.problems()
+    if problems:
+        sys.exit("Cannot start:\n" + "\n".join(f"  {p}" for p in problems))
+    settings.home.mkdir(parents=True, exist_ok=True)
+    if not settings.token:
+        settings.token = ensure_token(settings.home)
+    stop_server(settings.home)  # one brain per setup, this one takes over
+    browser = args.command == "ui"
+
+    def say(line: str) -> None:
+        if not browser:
+            print(line, flush=True)
+            return
+        kind, _, rest = line.partition(" ")
+        if kind == "ANEXIS_READY":
+            link = f"{settings.url}/ui/#token={settings.token}"
+            console.print(f" The deck is open at [bold]{settings.url}/ui/[/bold]  (Ctrl+C here stops it)", highlight=False)
+            if not args.no_browser:
+                threading.Thread(target=webbrowser.open, args=(link,), daemon=True).start()
+            else:
+                console.print(f" Open this link: {link}", highlight=False, soft_wrap=True)
+        else:
+            console.print(f"[dim] {rest}[/dim]", highlight=False, markup=False)
+
+    sys.exit(Supervisor(settings, say).run())
 
 
 def cmd_setup(settings: Settings, args) -> None:
@@ -355,6 +391,9 @@ def main() -> None:
     train.add_argument("--offline", action="store_true", help="no model, checks everything around it")
     train.add_argument("--pack", help="another training pack file")
     sub.add_parser("mcp", help="memory server for Claude Code (used by `claude mcp add`)")
+    ui = sub.add_parser("ui", help="open the deck in your browser")
+    ui.add_argument("--no-browser", action="store_true", help="print the link instead of opening it")
+    sub.add_parser("desktop", help=argparse.SUPPRESS)  # what the desktop app runs
     args = parser.parse_args()
 
     try:
@@ -370,6 +409,8 @@ def main() -> None:
         return cmd_setup(settings, args)
     if args.command == "stop":
         return cmd_stop(settings, args)
+    if args.command in ("desktop", "ui"):
+        return cmd_desktop(settings, args)
     handler = {
         None: cmd_chat, "ask": cmd_ask, "doctor": cmd_doctor, "aboutme": cmd_aboutme,
         "tools": cmd_tools, "memory": cmd_memory, "train": cmd_train,

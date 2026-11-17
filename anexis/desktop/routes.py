@@ -139,6 +139,14 @@ def attach(app, anexis) -> None:
         asyncio.get_running_loop().call_later(0.3, lambda: setattr(server, "should_exit", True))
         return {"restarting": True}
 
+    @app.post("/app/notice")
+    async def app_notice(body: dict):
+        """The supervisor reports here, so the deck can show what it is doing."""
+        if body.get("type") not in ("brain_error", "brain_restarting"):
+            raise HTTPException(400, "Not a notice Anexis knows")
+        anexis.events.publish({"type": body["type"], "files": body.get("files", []), "errors": body.get("errors", [])})
+        return {"ok": True}
+
     # ---- setup -------------------------------------------------------------
     @app.get("/setup")
     async def setup_state():

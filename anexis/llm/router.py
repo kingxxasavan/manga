@@ -19,6 +19,10 @@ class AllProvidersFailed(Exception):
     pass
 
 
+# Roles that only a model named for them can do. Every other role falls back to chat.
+STRICT_ROLES = {"vision"}
+
+
 class Router:
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None):
         self.settings = settings
@@ -35,6 +39,8 @@ class Router:
 
     def _model(self, provider: OpenAIProvider, role: str) -> str | None:
         models = provider.cfg.models
+        if role in STRICT_ROLES:  # a model that cannot see must never be handed a picture
+            return models.get(role)
         return models.get(role) or models.get("chat")
 
     def _order(self) -> list[OpenAIProvider]:

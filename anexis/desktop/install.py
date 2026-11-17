@@ -119,7 +119,7 @@ async def step_models(settings, wanted, say, run: Run, fetch: Fetch) -> str:
         say("starting Ollama")
         import subprocess
 
-        subprocess.Popen([ollama, "serve"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,  # noqa: ASYNC220
+        subprocess.Popen([ollama, "serve"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, **spawn_kwargs(detached=True))
         for _ in range(40):
             await asyncio.sleep(0.5)

@@ -66,6 +66,7 @@ ignore = [
     "SIM115",
     "ASYNC109",  # tool timeouts are passed through to subprocesses on purpose
     "ASYNC110",
+    "ASYNC220",  # starting a program that must outlive the call is done with Popen on purpose
     "ASYNC230",  # small local file writes, not worth a thread
     "ASYNC240",
 ]

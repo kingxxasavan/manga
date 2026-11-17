@@ -52,6 +52,23 @@ class AnexisApp:
         self._tasks.append(asyncio.create_task(self._start_tools()))
         if self.settings.consolidate_minutes > 0:
             self._tasks.append(asyncio.create_task(self._upkeep()))
+        if self.settings.ui_dir.is_dir():
+            self._tasks.append(asyncio.create_task(self._watch_deck()))
+
+    async def _watch_deck(self) -> None:
+        """Tells open decks to reload when one of their files is edited, so a
+        change to the UI shows up without restarting or rebuilding anything."""
+        from anexis.desktop import watch
+
+        seen = await asyncio.to_thread(watch.snapshot, self.settings.ui_dir)
+        while True:
+            await asyncio.sleep(1.0)
+            now = await asyncio.to_thread(watch.snapshot, self.settings.ui_dir)
+            touched = watch.changed(seen, now)
+            seen = now
+            if touched:
+                root = str(self.settings.ui_dir)
+                self.events.publish({"type": "reload", "files": [t[len(root):].lstrip("\\/").replace("\\", "/") for t in touched]})
 
     async def _start_tools(self) -> None:
         try:
