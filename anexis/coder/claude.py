@@ -162,7 +162,7 @@ class ClaudeRunner:
         cached = self.memory.kv_get(USAGE_KEY, None)
         if cached and not fresh and time.time() - cached.get("at", 0) < USAGE_TTL:
             return cached if cached.get("percent") is not None else None
-        code, output = await self._probe(["-p", "/usage", "--output-format", "stream-json", "--verbose"])
+        _, output = await self._probe(["-p", "/usage", "--output-format", "stream-json", "--verbose"])
         reading: dict = {"at": time.time(), "percent": None}
         for line in output.splitlines():
             line = line.strip()

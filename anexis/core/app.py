@@ -28,7 +28,7 @@ class AnexisApp:
         self.events = EventBus()
         self.router = router or Router(settings)
         self.registry = Registry()
-        register_builtin(self.registry)
+        register_builtin(self.registry, settings)
         self.claude = ClaudeRunner(settings, self.memory)
         self.fallback = FallbackCoder(settings, self.memory, self.router, self.registry)
         self.registry.add(make_code_tool(self.claude, self.fallback))
@@ -54,6 +54,28 @@ class AnexisApp:
             self._tasks.append(asyncio.create_task(self._upkeep()))
         if self.settings.ui_dir.is_dir():
             self._tasks.append(asyncio.create_task(self._watch_deck()))
+        if self.settings.env.get("CANVAS_TOKEN") and self.settings.env.get("CANVAS_URL"):
+            self._tasks.append(asyncio.create_task(self._canvas()))
+
+    async def _canvas(self) -> None:
+        """Keeps the assignment list in step with Canvas: once soon after
+        starting, then every hour. That is what makes reminders work without
+        anyone asking."""
+        from anexis.tools.builtin import canvas
+
+        await asyncio.sleep(5)
+        while True:
+            client = canvas.client_for(self.settings, canvas._transport)
+            try:
+                report = await canvas.sync(self.memory, client)
+                self.memory.log("canvas_sync", report)
+                self.events.publish({"type": "canvas_synced", **report})
+            except Exception as e:  # the school site being down must never hurt anything else
+                self.memory.log("canvas_sync_failed", {"error": f"{type(e).__name__}: {e}"[:300]})
+                self.events.publish({"type": "canvas_failed", "error": str(e)[:300]})
+            finally:
+                await client.close()
+            await asyncio.sleep(3600)
 
     async def _watch_deck(self) -> None:
         """Tells open decks to reload when one of their files is edited, so a
