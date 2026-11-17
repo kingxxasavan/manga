@@ -19,6 +19,8 @@ function draw() {
   for (const [name, s] of servers) {
     const detail = s.state === "running" ? `${s.tools} tools` : s.state === "needs key" ? `add ${(s.needs || []).join(", ")}` : s.state;
     body.push(h("div.server", h(`i.dot.${STATE[s.state] || ""}`), h("b", name), h("span", detail), h("small", { title: s.error || s.about }, s.error || s.about || "")));
+    // What a failed server printed before it stopped: the actual reason.
+    if (s.state === "failed" && s.log) body.push(h("pre.act-out", { style: "margin:0 10px 6px" }, s.log));
   }
   body.push(h("div.group.label", `tools (${shown.length}${filter ? ` of ${latest.tools.length}` : ""})`));
   for (const tool of shown.slice(0, 300)) {

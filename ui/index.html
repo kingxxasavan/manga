@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="ion">
+<html lang="en" data-theme="tron">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,13 +15,14 @@
 
 <div id="boot" class="boot" hidden>
   <div class="boot-inner">
-    <div class="boot-mark" id="boot-name">ANEXIS</div>
+    <ol class="boot-log" id="boot-log" aria-hidden="true"></ol>
+    <div class="boot-mark" id="boot-name" hidden>ANEXIS</div>
     <ol class="boot-lines" id="boot-lines"></ol>
     <div class="boot-skip">press any key to skip</div>
   </div>
 </div>
 
-<div class="deck" id="deck" data-center="chat" data-right="memory" data-view="chat">
+<div class="deck" id="deck" data-center="chat" data-view="chat">
   <header class="top">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
@@ -48,26 +49,30 @@
       <button class="stop" id="stop" disabled title="Stop what Anexis is doing right now (Esc)">STOP</button>
       <nav class="menu" aria-label="Screens">
         <button data-open="setup" title="Setup: preset, options, downloads">Setup</button>
-        <button data-open="keys" title="API keys">Keys</button>
+        <button data-open="models" title="Which model does which job">Models</button>
+        <button data-open="keys" title="API keys, Claude sign in, Canvas">Keys</button>
         <button data-open="doctor" title="Check that every part works">Checkup</button>
         <button data-open="about" title="Tell Anexis about yourself">About me</button>
         <button data-open="app" title="This app: live editing, theme, restart">App</button>
       </nav>
-      <time class="clock" id="clock">00:00</time>
     </div>
   </header>
 
   <div class="banner" id="banner" hidden></div>
 
-  <section class="panel p-system" data-panel="system" aria-label="System">
-    <h2><span>System</span><em id="sys-host"></em></h2>
-    <div class="panel-body" id="system"></div>
-  </section>
+  <!-- Left column: the machine. Built by js/stats.js. -->
+  <aside class="col col-left" data-panel="system" aria-label="System">
+    <div class="col-head"><span>PANEL</span><span>SYSTEM</span></div>
+    <div class="col-body" id="system"></div>
+  </aside>
 
-  <section class="panel p-center" aria-label="Chat and terminal">
+  <!-- Middle: the shell. Chat, the terminal, memory and tools share it as tabs. -->
+  <section class="shell" aria-label="Main shell">
     <div class="tabs" role="tablist">
       <button role="tab" data-center="chat" aria-selected="true">Chat</button>
       <button role="tab" data-center="terminal" aria-selected="false">Terminal</button>
+      <button role="tab" data-center="memory" aria-selected="false">Memory</button>
+      <button role="tab" data-center="tools" aria-selected="false">Tools</button>
       <span class="tabs-meta" id="center-meta"></span>
     </div>
     <div class="pane" data-panel="chat" id="chat">
@@ -89,35 +94,41 @@
       </div>
       <div class="term-host" id="term-host"></div>
     </div>
-  </section>
-
-  <section class="panel p-right" aria-label="Memory and tools">
-    <div class="tabs" role="tablist">
-      <button role="tab" data-right="memory" aria-selected="true">Memory</button>
-      <button role="tab" data-right="tools" aria-selected="false">Tools</button>
-    </div>
     <div class="pane" data-panel="memory" id="memory"></div>
     <div class="pane" data-panel="tools" id="tools"></div>
   </section>
 
-  <section class="panel p-files" data-panel="files" aria-label="Files">
-    <h2><span>Files</span><em id="files-count"></em></h2>
-    <div class="panel-body" id="files"></div>
+  <!-- Right column: the network, what Anexis is running on, and its live log. -->
+  <aside class="col col-right" data-panel="network" aria-label="Network and activity">
+    <div class="col-head"><span>PANEL</span><span>NETWORK</span></div>
+    <div class="col-body">
+      <div id="network"></div>
+      <section class="mod" id="brain">
+        <h3><b>Anexis</b><span id="brain-sub">status</span></h3>
+        <div class="mod-body" id="brain-body"></div>
+      </section>
+      <section class="mod mod-grow">
+        <h3><b>Activity</b><span id="activity-count">live</span></h3>
+        <div class="mod-body scroll" id="activity"></div>
+      </section>
+    </div>
+  </aside>
+
+  <section class="fs" data-panel="files" aria-label="Files">
+    <h3><b>Filesystem</b><span id="files-count"></span></h3>
+    <div class="fs-body" id="files"></div>
   </section>
 
-  <section class="panel p-activity" data-panel="activity" aria-label="Activity">
-    <h2><span>Activity</span><em id="activity-count">everything Anexis does, live</em></h2>
-    <div class="panel-body" id="activity"></div>
-  </section>
+  <section class="kb" data-panel="keyboard" id="keyboard" aria-label="On screen keyboard"></section>
 
   <nav class="views" aria-label="Panels">
     <button data-view="chat">Chat</button>
     <button data-view="terminal">Term</button>
-    <button data-view="system">System</button>
     <button data-view="memory">Memory</button>
     <button data-view="tools">Tools</button>
+    <button data-view="system">System</button>
+    <button data-view="network">Network</button>
     <button data-view="files">Files</button>
-    <button data-view="activity">Feed</button>
   </nav>
 </div>
 

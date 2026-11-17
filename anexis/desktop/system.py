@@ -11,6 +11,8 @@ import time
 import psutil
 
 _last_net: tuple[float, int, int] | None = None
+_cpu_name = ""
+_link: tuple[float, dict] = (0.0, {})
 _gpu: tuple[float, list[dict]] = (0.0, [])
 _gpu_missing = False
 _procs: dict[int, psutil.Process] = {}
@@ -28,6 +30,53 @@ def _net() -> dict:
         down = max(0, counters.bytes_recv - _last_net[2]) / span
     _last_net = (now, counters.bytes_sent, counters.bytes_recv)
     return {"up": round(up), "down": round(down), "sent": counters.bytes_sent, "received": counters.bytes_recv}
+
+
+def cpu_name() -> str:
+    """What the processor is called, read once."""
+    global _cpu_name
+    if _cpu_name:
+        return _cpu_name
+    name = ""
+    try:
+        if host_platform.system() == "Windows":
+            import winreg
+
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as key:
+                name = str(winreg.QueryValueEx(key, "ProcessorNameString")[0])
+        else:
+            with open("/proc/cpuinfo", encoding="utf-8", errors="replace") as f:
+                name = next((line.split(":", 1)[1] for line in f if line.lower().startswith("model name")), "")
+    except (OSError, ImportError, StopIteration):
+        name = ""
+    _cpu_name = " ".join((name or host_platform.processor() or host_platform.machine() or "unknown").split())
+    return _cpu_name
+
+
+def _link_state() -> dict:
+    """Which network link this machine talks through and its address on it.
+    Nothing is sent anywhere: connecting a UDP socket only picks a route."""
+    global _link
+    if time.monotonic() - _link[0] < 10 and _link[1]:
+        return _link[1]
+    address = ""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("10.255.255.255", 1))
+            address = probe.getsockname()[0]
+    except OSError:
+        address = ""
+    name = ""
+    try:
+        for iface, addrs in psutil.net_if_addrs().items():
+            if any(a.address == address for a in addrs):
+                name = iface
+                break
+    except OSError:
+        pass
+    state = {"online": bool(address) and not address.startswith("127."), "ip": address or "none", "iface": name or "none"}
+    _link = (time.monotonic(), state)
+    return state
 
 
 def _disks() -> list[dict]:
@@ -107,8 +156,12 @@ def stats() -> dict:
         "host": socket.gethostname(),
         "os": f"{host_platform.system()} {host_platform.release()}",
         "cpu": psutil.cpu_percent(interval=None),
+        "cpu_name": cpu_name(),
+        "link": _link_state(),
         "cores": psutil.cpu_percent(interval=None, percpu=True),
-        "memory": {"used": memory.total - memory.available, "total": memory.total, "percent": memory.percent},
+        # used: programs. cached: held by the system but given back on demand. free: nothing in it.
+        "memory": {"used": memory.total - memory.available, "total": memory.total, "percent": memory.percent,
+                   "cached": max(0, memory.available - memory.free), "free": memory.free},
         "swap": {"used": swap.used, "total": swap.total},
         "disks": _disks(),
         "net": _net(),

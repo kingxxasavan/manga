@@ -1,117 +1,197 @@
-// The system panel: live numbers about this machine, redrawn every two seconds.
+// The two side columns: the machine on the left (clock, CPU, memory, programs)
+// and the network on the right (link, globe, traffic). Redrawn every two seconds
+// from one request, so both always show the same moment.
 
 import * as api from "./api.js";
 import { $, bytes, duration, h } from "./dom.js";
+import { initGlobe } from "./globe.js";
 
-const KEEP = 60; // two minutes of history in the little graphs
-const cpuPast = [], downPast = [];
-let parts = null;
+const KEEP = 60; // two minutes of history in the graphs
+const past = { a: [], b: [], down: [], up: [] };
+let ui = null, order = [];
 
-function spark(canvas, values, top) {
-  const ratio = devicePixelRatio || 1;
-  const w = canvas.clientWidth, hgt = canvas.clientHeight;
-  if (!w || !hgt) return;
-  if (canvas.width !== w * ratio) { canvas.width = w * ratio; canvas.height = hgt * ratio; }
+const accent = () => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+
+function fit(canvas) {
+  const ratio = devicePixelRatio || 1, w = canvas.clientWidth, hgt = canvas.clientHeight;
+  if (!w || !hgt) return null;
+  if (canvas.width !== Math.round(w * ratio)) { canvas.width = Math.round(w * ratio); canvas.height = Math.round(hgt * ratio); }
   const ctx = canvas.getContext("2d");
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, w, hgt);
-  if (values.length < 2) return;
-  const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-  const max = Math.max(top || 0, ...values, 1e-9), step = w / (KEEP - 1), start = w - (values.length - 1) * step;
-  ctx.beginPath();
-  values.forEach((v, i) => {
-    const x = start + i * step, y = hgt - 2 - (v / max) * (hgt - 6);
-    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  return { ctx, w, hgt };
+}
+
+function spark(canvas, series, top) {
+  const area = fit(canvas);
+  if (!area) return;
+  const { ctx, w, hgt } = area, colour = accent();
+  const max = Math.max(top || 0, ...series.flat(), 1e-9), step = w / (KEEP - 1);
+  series.forEach((values, n) => {
+    if (values.length < 2) return;
+    const start = w - (values.length - 1) * step;
+    ctx.beginPath();
+    values.forEach((v, i) => {
+      const x = start + i * step, y = hgt - 1.5 - (v / max) * (hgt - 4);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    });
+    ctx.strokeStyle = colour;
+    ctx.globalAlpha = n ? 0.45 : 1;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
   });
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 1.5;
-  ctx.shadowColor = accent;
-  ctx.shadowBlur = 6;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.lineTo(w, hgt);
-  ctx.lineTo(start, hgt);
-  ctx.closePath();
-  const fill = ctx.createLinearGradient(0, 0, 0, hgt);
-  fill.addColorStop(0, accent + "55");
-  fill.addColorStop(1, accent + "00");
-  ctx.fillStyle = fill;
-  ctx.fill();
+  ctx.globalAlpha = 1;
 }
 
-function meter(label) {
-  const value = h("span"), bar = h("i");
-  const el = h("div.meter", h("span.label", label), value, h("div.bar", bar));
-  return { el, set(text, percent) {
-    value.textContent = text;
-    bar.style.transform = `scaleX(${Math.min(1, Math.max(0, percent / 100))})`;
-    el.classList.toggle("hot", percent >= 90);
-  } };
-}
-
-function build(root) {
-  const cpu = h("b"), cpuGraph = h("canvas.spark"), cores = h("div.cores");
-  const memory = meter("memory"), swap = meter("swap");
-  const gpus = h("div.sys"), disks = h("div.sys");
-  const up = h("b"), down = h("b"), netGraph = h("canvas.spark");
-  const procs = h("table.procs"), foot = h("div.sys-foot");
-  root.replaceChildren(h("div.sys",
-    h("div", h("div.sys-head", h("span.label", "cpu"), cpu), cpuGraph, cores),
-    memory.el, swap.el, gpus, disks,
-    h("div", h("div.net", h("div", h("span.label", "down"), down), h("div", h("span.label", "up"), up)), netGraph),
-    h("div", h("div.label", { style: "margin-bottom:4px" }, "busiest programs"), procs),
-    foot,
-  ));
-  return { cpu, cpuGraph, cores, memory, swap, gpus, disks, up, down, netGraph, procs, foot, meters: {} };
-}
-
-function named(group, key, label) {
-  const store = parts.meters;
-  if (!store[key]) {
-    store[key] = meter(label);
-    group.append(store[key].el);
+/** The memory grid: one dot per slice of memory, bright for what programs
+ *  use, dim for what the system holds but gives back, faint for empty. The
+ *  dots are shuffled once so it reads as a texture, not a bar. */
+function dots(canvas, used, cached) {
+  const area = fit(canvas);
+  if (!area) return;
+  const { ctx, w, hgt } = area, cols = 40, rows = 8, total = cols * rows;
+  if (order.length !== total) {
+    order = [...Array(total).keys()];
+    for (let i = total - 1; i > 0; i--) { const j = (i * 7919 + 13) % (i + 1); [order[i], order[j]] = [order[j], order[i]]; }
   }
-  return store[key];
+  const nUsed = Math.round(used * total), nCached = Math.round(cached * total);
+  const cw = w / cols, ch = hgt / rows, size = Math.max(1.5, Math.min(cw, ch) * 0.55);
+  ctx.fillStyle = accent();
+  order.forEach((slot, rank) => {
+    ctx.globalAlpha = rank < nUsed ? 1 : rank < nUsed + nCached ? 0.42 : 0.13;
+    ctx.fillRect((slot % cols) * cw + (cw - size) / 2, Math.floor(slot / cols) * ch + (ch - size) / 2, size, size);
+  });
+  ctx.globalAlpha = 1;
+}
+
+const mod = (title, sub, ...body) => h("section.mod", h("h3", h("b", title), sub), ...body);
+const cell = (label) => { const value = h("b", "…"); return { el: h("div", h("span", label), value), value }; };
+
+function build() {
+  const clock = h("div.clock-big");
+  const day = cell("date"), up = cell("uptime"), type = cell("type"), power = cell("power");
+  const cpuName = h("span"), a = h("canvas.spark"), b = h("canvas.spark");
+  const aLabel = h("span"), aAvg = h("small"), bLabel = h("span"), bAvg = h("small");
+  const load = cell("load"), cores = cell("cores"), tasks = cell("tasks"), gpu = cell("gpu");
+  const memSub = h("span"), memDots = h("canvas.dots"), swapBar = h("div.bar", h("i")), swapText = h("b");
+  const extra = h("div"), procSub = h("span"), procs = h("table.procs");
+  $("#system").replaceChildren(
+    mod("", "", clock),
+    h("section.mod", h("div.cells", day.el, up.el, type.el, power.el)),
+    mod("CPU usage", cpuName,
+      h("div.graph-row", h("div", aLabel, aAvg), a), h("div.graph-row", h("div", bLabel, bAvg), b),
+      h("div.cells", { style: "margin-top:6px" }, load.el, cores.el, tasks.el, gpu.el)),
+    mod("Memory", memSub, memDots, h("div.line", h("span", "swap"), swapBar, swapText), extra),
+    h("section.mod.mod-grow", h("h3", h("b", "Top processes"), procSub), h("div.mod-body.scroll", procs)),
+  );
+  $("#system > .mod:first-child > h3").remove();
+
+  const state = h("b"), ip = cell("ipv4"), iface = cell("interface");
+  const globeSub = h("span"), globe = h("canvas.globe");
+  const down = cell("down"), upload = cell("up"), totals = cell("total"), traffic = h("canvas.spark");
+  $("#network").replaceChildren(
+    mod("Network status", h("span"), h("div.pair", h("div", h("span", "state"), state), ip.el, iface.el)),
+    mod("World view", globeSub, globe),
+    mod("Network traffic", h("span", "down and up"), h("div.pair", down.el, upload.el, totals.el), traffic),
+  );
+  return { clock, day, up, type, power, cpuName, a, b, aLabel, aAvg, bLabel, bAvg, load, cores, tasks, gpu,
+    memSub, memDots, swapBar, swapText, extra, procSub, procs, state, ip, iface, globeSub,
+    spin: initGlobe(globe), down, upload, totals, traffic, meters: {} };
+}
+
+function meter(key, label) {
+  if (!ui.meters[key]) {
+    const bar = h("div.bar", h("i")), value = h("b");
+    ui.meters[key] = { bar, value };
+    ui.extra.append(h("div.line", h("span", { title: label }, label), bar, value));
+  }
+  return ui.meters[key];
+}
+
+function tick() {
+  const now = new Date(), two = (n) => String(n).padStart(2, "0");
+  ui.clock.replaceChildren(two(now.getHours()), h("em", ":"), two(now.getMinutes()), h("em", ":"), two(now.getSeconds()));
+  ui.day.value.textContent = now.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
+  ui.day.value.title = now.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+}
+
+function push(list, value) {
+  list.push(value);
+  if (list.length > KEEP) list.shift();
 }
 
 function draw(s) {
-  $("#sys-host").textContent = `${s.host} · ${s.os}`;
-  parts.cpu.replaceChildren(String(Math.round(s.cpu)), h("small", "%"));
-  cpuPast.push(s.cpu);
-  downPast.push(s.net.down);
-  if (cpuPast.length > KEEP) cpuPast.shift();
-  if (downPast.length > KEEP) downPast.shift();
-  spark(parts.cpuGraph, cpuPast, 100);
-  spark(parts.netGraph, downPast, 50_000);
+  const mean = (values) => (values.length ? values.reduce((x, y) => x + y, 0) / values.length : 0);
+  const half = Math.ceil(s.cores.length / 2), first = s.cores.slice(0, half), second = s.cores.slice(half);
+  push(past.a, mean(first));
+  push(past.b, second.length ? mean(second) : mean(first));
+  push(past.down, s.net.down);
+  push(past.up, s.net.up);
 
-  if (parts.cores.childElementCount !== s.cores.length) parts.cores.replaceChildren(...s.cores.map(() => h("i")));
-  s.cores.forEach((load, i) => { parts.cores.children[i].style.height = `${Math.max(6, load)}%`; });
+  ui.up.value.textContent = duration(s.uptime);
+  ui.type.value.textContent = s.os.split(" ")[0].replace("Windows", "win").toLowerCase();
+  ui.type.value.title = `${s.host} · ${s.os}`;
+  ui.power.value.textContent = s.battery ? `${Math.round(s.battery.percent)}%${s.battery.plugged ? " on" : ""}` : "on";
 
-  parts.memory.set(`${bytes(s.memory.used)} / ${bytes(s.memory.total)}`, s.memory.percent);
-  parts.swap.el.hidden = !s.swap.total;
-  if (s.swap.total) parts.swap.set(`${bytes(s.swap.used)} / ${bytes(s.swap.total)}`, (s.swap.used / s.swap.total) * 100);
-  s.gpus.forEach((gpu, i) => {
-    named(parts.gpus, `gpu${i}`, `gpu ${gpu.name.replace(/^NVIDIA\s+/i, "")}`).set(`${Math.round(gpu.percent)}% · ${Math.round(gpu.temp)}°C`, gpu.percent);
-    named(parts.gpus, `vram${i}`, "gpu memory").set(`${bytes(gpu.used)} / ${bytes(gpu.total)}`, (gpu.used / gpu.total) * 100);
+  ui.cpuName.textContent = s.cpu_name;
+  ui.cpuName.title = s.cpu_name;
+  ui.aLabel.textContent = `# 1 - ${half}`;
+  ui.aAvg.textContent = `Avg. ${mean(first).toFixed(0)}%`;
+  ui.bLabel.textContent = second.length ? `# ${half + 1} - ${s.cores.length}` : "all";
+  ui.bAvg.textContent = `Avg. ${(second.length ? mean(second) : mean(first)).toFixed(0)}%`;
+  spark(ui.a, [past.a], 100);
+  spark(ui.b, [past.b], 100);
+  ui.load.value.textContent = `${Math.round(s.cpu)}%`;
+  ui.cores.value.textContent = s.cores.length;
+  ui.tasks.value.textContent = s.process_count;
+  const card = s.gpus[0];
+  ui.gpu.value.textContent = card ? `${Math.round(card.percent)}% ${Math.round(card.temp)}°` : "none";
+  ui.gpu.value.title = card ? `${card.name}: ${bytes(card.used)} of ${bytes(card.total)} memory` : "No Nvidia card found";
+
+  const gib = (n) => (n / 1024 ** 3).toFixed(1);
+  ui.memSub.textContent = `using ${gib(s.memory.used)} out of ${gib(s.memory.total)} GiB`;
+  dots(ui.memDots, s.memory.used / s.memory.total, s.memory.cached / s.memory.total);
+  const swap = s.swap.total ? s.swap.used / s.swap.total : 0;
+  ui.swapBar.firstChild.style.transform = `scaleX(${swap})`;
+  ui.swapText.textContent = s.swap.total ? `${gib(s.swap.used)} GiB` : "none";
+  if (card) {
+    const vram = meter("vram", "gpu mem");
+    vram.bar.firstChild.style.transform = `scaleX(${card.used / card.total})`;
+    vram.value.textContent = `${gib(card.used)} / ${gib(card.total)}`;
+  }
+  s.disks.slice(0, 3).forEach((disk) => {
+    const m = meter(`disk:${disk.mount}`, `disk ${disk.mount}`);
+    m.bar.firstChild.style.transform = `scaleX(${disk.percent / 100})`;
+    m.bar.classList.toggle("hot", disk.percent >= 92);
+    m.value.textContent = `${bytes(disk.total - disk.used)} free`;
   });
-  parts.gpus.hidden = !s.gpus.length;
-  s.disks.forEach((disk) => named(parts.disks, `disk:${disk.mount}`, `disk ${disk.mount}`).set(`${bytes(disk.total - disk.used)} free`, disk.percent));
 
-  parts.down.textContent = `${bytes(s.net.down)}/s`;
-  parts.up.textContent = `${bytes(s.net.up)}/s`;
-  parts.procs.replaceChildren(...s.processes.slice(0, 6).map((p) =>
-    h("tr", h("td", { title: `pid ${p.pid}` }, p.name), h("td", `${p.cpu.toFixed(1)}%`), h("td", bytes(p.memory)))));
-  const battery = s.battery ? `battery ${Math.round(s.battery.percent)}%${s.battery.plugged ? " ⚡" : ""}` : "";
-  parts.foot.replaceChildren(h("span", `up ${duration(s.uptime)}`), h("span", battery || `${s.process_count} programs`));
+  ui.procSub.textContent = "pid | name | cpu | mem";
+  ui.procs.replaceChildren(...s.processes.map((p) =>
+    h("tr", h("td", String(p.pid)), h("td", { title: p.name }, p.name), h("td", `${p.cpu.toFixed(1)}%`), h("td", bytes(p.memory)))));
+
+  ui.state.textContent = s.link.online ? "ONLINE" : "OFFLINE";
+  ui.state.className = s.link.online ? "up" : "down";
+  ui.ip.value.textContent = s.link.ip;
+  ui.iface.value.textContent = s.link.iface;
+  ui.iface.value.title = s.link.iface;
+  ui.globeSub.textContent = s.link.online ? "link up" : "no link";
+  ui.spin(s.link.online, Math.min(1, (s.net.down + s.net.up) / 400_000));
+  ui.down.value.textContent = `${bytes(s.net.down)}/s`;
+  ui.upload.value.textContent = `${bytes(s.net.up)}/s`;
+  ui.totals.value.textContent = bytes(s.net.received + s.net.sent);
+  ui.totals.value.title = `${bytes(s.net.received)} in, ${bytes(s.net.sent)} out since this computer started`;
+  spark(ui.traffic, [past.down, past.up], 20_000);
 }
 
 export function initStats() {
-  parts = build($("#system"));
-  const tick = async () => {
-    if (!document.hidden) {
-      try { draw(await api.get("/system/stats")); } catch { /* the brain is restarting, try again next time */ }
-    }
-  };
+  ui = build();
   tick();
-  setInterval(tick, 2000);
+  setInterval(tick, 1000);
+  const poll = async () => {
+    if (document.hidden) return;
+    try { draw(await api.get("/system/stats")); } catch { /* the brain is restarting, try again next time */ }
+  };
+  poll();
+  setInterval(poll, 2000);
 }

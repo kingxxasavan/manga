@@ -10,7 +10,7 @@ const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const BG = "#04070b";
+const BG = "#000000";
 let win = null, brain = null, deckUrl = "", quitting = false, lastLog = "";
 
 // ---- finding Python ------------------------------------------------------
@@ -41,13 +41,13 @@ function notePage(title, detail = "", log = "") {
   const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   return "data:text/html;charset=utf-8," + encodeURIComponent(`<!doctype html><meta charset="utf-8"><title>Anexis</title>
 <style>
-  html,body{height:100%;margin:0;background:${BG};color:#d5eef6;font:14px/1.6 Consolas,ui-monospace,monospace}
+  html,body{height:100%;margin:0;background:${BG};color:#c2dfe1;font:14px/1.6 Consolas,ui-monospace,monospace}
   body{display:grid;place-items:center}
   main{width:min(720px,86vw)}
-  h1{font:700 44px/1 "Segoe UI",system-ui,sans-serif;letter-spacing:.34em;color:#4fe3ff;text-shadow:0 0 30px #4fe3ff59;margin:0 0 22px}
+  h1{font:700 44px/1 "Segoe UI",system-ui,sans-serif;letter-spacing:.34em;color:#aacfd1;text-shadow:0 0 30px #aacfd159;margin:0 0 22px}
   p{color:#6d8a96;margin:0 0 10px;white-space:pre-wrap}
   p b{color:#d5eef6;font-weight:500}
-  pre{margin:14px 0 0;padding:12px;border:1px solid #4fe3ff38;background:#070d14;color:#6d8a96;white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;font-size:12px}
+  pre{margin:14px 0 0;padding:12px;border:1px solid #aacfd138;background:#000;color:#6d8a96;white-space:pre-wrap;overflow-wrap:anywhere;max-height:40vh;overflow:auto;font-size:12px}
 </style>
 <main><h1>ANEXIS</h1><p><b>${esc(title)}</b></p><p>${esc(detail)}</p>${log ? `<pre>${esc(log)}</pre>` : ""}</main>`);
 }
@@ -161,10 +161,13 @@ function createWindow(context) {
       if (/^https?:/.test(url)) shell.openExternal(url);
     }
   });
-  // The microphone, for talking to it. Nothing else, and only for the deck.
+  // The microphone, for talking to it, and notifications, for reminders about
+  // what is due. Nothing else, and only for the deck.
   session.defaultSession.setPermissionRequestHandler((contents, permission, allow, details) => {
-    allow(permission === "media" && local(details.requestingUrl || contents.getURL()));
+    allow(["media", "notifications"].includes(permission) && local(details.requestingUrl || contents.getURL()));
   });
+  session.defaultSession.setPermissionCheckHandler((contents, permission, origin) =>
+    ["media", "notifications"].includes(permission) && local(origin || contents?.getURL() || ""));
 }
 
 function menu(context) {
@@ -183,6 +186,7 @@ function menu(context) {
 }
 
 function start(context) {
+  app.setAppUserModelId("dev.anexis.desktop");  // so Windows shows reminders under the app's own name
   if (!app.requestSingleInstanceLock()) {
     app.quit();  // already open: the first one is brought to the front below
     return;

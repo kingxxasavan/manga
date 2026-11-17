@@ -47,6 +47,8 @@ control = "ask"           # "ask": risky tools wait for a yes. "full": every too
 claude_bin = "claude"
 # claude_model = "sonnet"
 claude_backoff_minutes = 30   # rest time when Claude gives no reset time
+claude_switch_percent = 85    # when the Claude plan is this used up, code on the model below. 0 turns it off.
+claude_switch_model = "opus"
 fallback_rounds = 12
 
 [voice]

@@ -117,7 +117,10 @@ try {
     await shot("04-setup-downloads");
     await page.click(".sheet-foot .primary");
     await page.fill(".keyrow input >> nth=0", "nvapi-abcdefghijklmnop");
-    await page.fill(".keyrow input >> nth=7", 'od"d key');
+    await page.fill('.keyrow input[aria-label="Exa key"]', 'od"d key');
+    await page.fill('.keyrow input[aria-label="Canvas address"]', "https://school.example");
+    assert.equal(await page.locator('.keyrow input[aria-label="Canvas address"]').getAttribute("type"), "text");
+    assert.equal(await page.locator('.keyrow input[aria-label="Canvas token"]').getAttribute("type"), "password");
     await shot("05-setup-keys");
     await page.click(".sheet-foot .primary");
     await page.waitForSelector('.sheet-foot .primary:has-text("Done")', { timeout: 60000 });
@@ -126,6 +129,7 @@ try {
     assert.match(await page.locator(".sheet-body").innerText(), /EXA_API_KEY: That has a space/);
     const env = readFileSync(join(home, "home", ".env"), "utf8");
     assert.match(env, /NVIDIA_API_KEY=nvapi-abcdefghijklmnop/);
+    assert.match(env, /CANVAS_URL=https:\/\/school\.example/);
     assert.match(readFileSync(join(home, "home", "anexis.toml"), "utf8"), /control = "full"/);
     await page.click(".sheet-foot .primary");
     await page.waitForSelector(".chat-empty");
@@ -189,7 +193,7 @@ try {
     await page.fill("#input", "/re");
     assert.equal(await page.locator("#suggest button").count(), 1);
     await sendChat("/remember I like the ember theme");
-    await page.locator('.mem:has-text("I like the ember theme")').waitFor();
+    await page.locator('.mem:has-text("I like the ember theme")').waitFor({ state: "attached" });
     await sendChat("/theme ember");
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "ember");
     await sendChat("/nope");
@@ -198,6 +202,7 @@ try {
   });
 
   await step("memory can be searched and forgotten", async () => {
+    await page.click('.tabs [data-center="memory"]');
     await page.fill("#mem-search", "ember");
     await page.waitForFunction(() => document.querySelectorAll(".mem").length === 1);
     const forget = page.locator(".mem button");
@@ -205,16 +210,17 @@ try {
     await forget.click();
     assert.equal(await forget.innerText(), "SURE?");
     await forget.click();
-    await page.waitForSelector(".side-list .empty");
+    await page.waitForSelector("#memory .side-list .empty");
     await page.fill("#mem-search", "");
+    await page.click('.tabs [data-center="chat"]');
   });
 
-  await step("the tools panel lists what Anexis can use", async () => {
-    await page.click('.tabs [data-right="tools"]');
+  await step("the tools tab lists what Anexis can use", async () => {
+    await page.click('.tabs [data-center="tools"]');
     await page.locator('.tool b:text-is("run_shell")').waitFor();
     await page.fill('#tools input[type="search"]', "mouse");
     await page.waitForFunction(() => [...document.querySelectorAll(".tool b")].every((b) => /mouse/.test(b.parentNode.innerText)));
-    await page.click('.tabs [data-right="memory"]');
+    await page.click('.tabs [data-center="chat"]');
   });
 
   await step("the files panel browses folders with odd names", async () => {
@@ -226,10 +232,50 @@ try {
     await page.locator('.tile:has-text("my föld er")').waitFor();
   });
 
-  await step("the system panel shows live numbers", async () => {
-    assert.match(await page.locator(".sys-head b").innerText(), /^\d+\s*%$/);
-    assert.ok((await page.locator(".procs tr").count()) >= 3);
-    assert.match(await page.locator("#sys-host").innerText(), /·/);
+  await step("the side columns show the machine and the network live", async () => {
+    assert.match(await page.locator(".clock-big").innerText(), /^\d\d:\d\d:\d\d$/);
+    await page.waitForFunction(() => document.querySelectorAll(".procs tr").length >= 3);
+    assert.match(await page.locator("#system").innerText(), /USING [\d.]+ OUT OF [\d.]+ GIB/i);
+    assert.match(await page.locator("#network").innerText(), /ONLINE|OFFLINE/);
+    // the globe and the memory grid are drawn, not blank
+    const painted = await page.evaluate(() => [...document.querySelectorAll("canvas.globe, canvas.dots")].map((c) => {
+      const data = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+      return data.some((v, i) => i % 4 === 3 && v > 0);
+    }));
+    assert.deepEqual(painted, [true, true]);
+    assert.match(await page.locator("#brain-body").innerText(), /MODEL\s+scripted/i);
+  });
+
+  await step("the on screen keyboard lights up and types", async () => {
+    await page.click("#input");
+    await page.keyboard.down("KeyA");
+    assert.equal(await page.locator('.kb-row button.on').count(), 1);
+    await page.keyboard.up("KeyA");
+    assert.equal(await page.locator('.kb-row button.on').count(), 0);
+    await page.fill("#input", "");
+    for (const key of ["shift", "h", "i", "1"]) await page.locator(`.kb-row button:text-is("${key}")`).first().dispatchEvent("mousedown");
+    assert.equal(await page.inputValue("#input"), "Hi1");
+    await page.locator('.kb-row button:text-is("back")').dispatchEvent("mousedown");
+    assert.equal(await page.inputValue("#input"), "Hi");
+    await page.fill("#input", "");
+  });
+
+  await step("the models screen lists every provider and what it has", async () => {
+    await page.click('[data-open="models"]');
+    await page.waitForSelector(".prov");
+    assert.deepEqual(await page.locator(".prov h4 b").allInnerTexts(), ["NVIDIA", "OLLAMA ON THIS COMPUTER", "OLLAMA CLOUD"]);
+    assert.equal(await page.locator('.prov input[aria-label="Nvidia chat model"]').inputValue(), "meta/llama-3.3-70b-instruct");
+    await shot("10b-models");
+    await page.keyboard.press("Escape");
+  });
+
+  await step("the keys screen shows how Claude is signed in and the switch to a cheaper model", async () => {
+    await page.click('[data-open="keys"]');
+    await page.waitForSelector(".keyrow");
+    assert.match(await page.locator(".sheet-body").innerText(), /Canvas: assignments and class files/);
+    assert.match(await page.locator(".sheet-body").innerText(), /CLAUDE FOR CODE/);
+    await shot("10c-keys");
+    await page.keyboard.press("Escape");
   });
 
   await step("the terminal is a real shell", async () => {
@@ -251,7 +297,7 @@ try {
     await page.fill(".sheet .field input >> nth=0", "Sam");
     await page.click('.sheet-foot .primary:has-text("Save")');
     await page.waitForSelector(".sheet", { state: "hidden" });
-    await page.locator('.mem:has-text("Name: Sam")').waitFor();
+    await page.locator('.mem:has-text("Name: Sam")').waitFor({ state: "attached" });
     await page.click('[data-open="app"]');
     await page.waitForSelector(".swatch");
     await shot("11-app");
@@ -299,12 +345,12 @@ try {
   await step("a phone sized window shows one panel at a time with no sideways scroll", async () => {
     await page.setViewportSize({ width: 390, height: 800 });
     await page.waitForTimeout(300);
-    for (const view of ["chat", "terminal", "system", "memory", "tools", "files", "activity"]) {
+    for (const view of ["chat", "terminal", "memory", "tools", "system", "network", "files"]) {
       await page.click(`.views [data-view="${view}"]`);
       await page.waitForTimeout(150);
       const [wide, shown] = await page.evaluate(() => [
         document.documentElement.scrollWidth - innerWidth,
-        [...document.querySelectorAll(".panel")].filter((p) => p.offsetParent).length,
+        [...document.querySelectorAll(".col, .shell, .fs, .kb")].filter((p) => p.offsetParent).length,
       ]);
       assert.ok(wide <= 0, `${view} is ${wide}px too wide`);
       assert.equal(shown, 1, `${view} shows ${shown} panels`);

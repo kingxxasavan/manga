@@ -108,6 +108,9 @@ def create_app(anexis) -> FastAPI:
             "tool_servers": len(running),
             "tool_servers_starting": starting,
             "providers": [p.name for p in getattr(anexis.router, "providers", [])],
+            # which model each source answers with, for the status panel
+            "chat_models": {p.name: getattr(getattr(p, "cfg", None), "models", {}).get("chat", "")
+                            for p in getattr(anexis.router, "providers", [])},
             "due": [f"{i['title']} (due {i['due_at']})" for i in due_soon(anexis.memory, days=2)],
         }
 

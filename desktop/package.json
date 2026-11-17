@@ -1,7 +1,7 @@
 {
   "name": "anexis-desktop",
   "productName": "Anexis",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Anexis as a desktop app: the window around the deck, and the Windows installer",
   "private": true,
   "author": "Anexis",

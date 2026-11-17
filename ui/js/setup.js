@@ -120,6 +120,11 @@ export async function openSetup() {
         preset: choice.preset, name: choice.name.trim() || "Anexis", control: choice.control, voice: choice.voice, keys: fields.values(),
       });
       warnings = reply.warnings;
+      for (const [provider, roles] of Object.entries(reply.healed || {})) {
+        for (const [role, [old, now]] of Object.entries(roles)) {
+          if (now) warnings[`${provider} ${role} model`] = `${old || "none"} is not offered any more, so ${now} is used. Change it under Models.`;
+        }
+      }
       saving.dataset.state = "done";
       saving.querySelector("small").textContent = reply.backup ? `saved. Your old settings are kept as ${reply.backup}` : "saved";
     } catch (e) {

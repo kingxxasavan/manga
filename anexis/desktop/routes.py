@@ -211,8 +211,16 @@ def attach(app, anexis) -> None:
                 raise HTTPException(400, str(e)) from None
         elif changes:
             wizard.update_env_file(settings.home / ".env", changes)
+        # A preset names models that the provider may have retired since this
+        # was written. Check against what it has today, with the keys just saved.
+        healed: dict = {}
+        if body.get("preset"):
+            try:
+                healed = await model_picker.heal(settings, {**dict(settings.env), **read_dotenv(settings.home / ".env")})
+            except Exception:  # offline, or a bad key: Models in the app can fix it later
+                healed = {}
         return {
-            "saved": True, "warnings": warnings, "backup": backup.name if backup else "",
+            "saved": True, "warnings": warnings, "backup": backup.name if backup else "", "healed": healed,
             "keys_changed": sorted(changes), "restart": bool(body.get("preset") or changes),
         }
 
@@ -252,6 +260,15 @@ def attach(app, anexis) -> None:
         except (ValueError, OSError) as e:
             raise HTTPException(400, str(e)) from None
         return {"saved": True, "backup": backup.name if backup else "", "restart": True}
+
+    @app.post("/models/heal")
+    async def models_heal():
+        """Replaces retired models with what the provider has now."""
+        try:
+            changed = await model_picker.heal(settings)
+        except (ValueError, OSError) as e:
+            raise HTTPException(400, str(e)) from None
+        return {"changed": changed, "restart": bool(changed)}
 
     @app.post("/models/test")
     async def models_test(body: dict):

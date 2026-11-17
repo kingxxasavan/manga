@@ -146,3 +146,38 @@ async def test_the_claude_route_reports_sign_in_usage_and_the_switch(live, setti
         assert (await http.post("/claude", json={"switch_percent": 150})).status_code == 400
     coder = tomllib.loads((settings.home / "anexis.toml").read_text())["coder"]
     assert coder == {"claude_switch_percent": 95, "claude_switch_model": "sonnet"}
+
+
+async def test_retired_models_are_swapped_for_current_ones_in_one_step(cloud, monkeypatch):
+    fake_provider(monkeypatch)
+    changed = await models.heal(cloud)
+    assert changed == {"nvidia": {"chat": ["meta/llama-3.3-70b-instruct", "meta/llama-4-70b-instruct"],
+                                  "embed": ["nvidia/nv-embedqa-e5-v5", "nvidia/nv-embed-v2"]}}
+    saved = tomllib.loads((cloud.home / "anexis.toml").read_text())
+    assert saved["providers"][0]["models"] == {"chat": "meta/llama-4-70b-instruct", "embed": "nvidia/nv-embed-v2"}
+    assert saved["agent"]["control"] == "full"
+    assert await models.heal(cloud) == {}        # nothing left to fix, nothing rewritten
+
+
+async def test_a_gone_model_with_no_stand_in_is_cleared_not_kept(cloud, monkeypatch):
+    fake_provider(monkeypatch, have=["meta/llama-4-70b-instruct"])   # nothing that can embed any more
+    changed = await models.heal(cloud)
+    assert changed["nvidia"]["embed"] == ["nvidia/nv-embedqa-e5-v5", ""]
+    assert tomllib.loads((cloud.home / "anexis.toml").read_text())["providers"][0]["models"] == {"chat": "meta/llama-4-70b-instruct"}
+
+
+async def test_healing_leaves_things_alone_when_the_provider_cannot_be_reached(cloud, monkeypatch):
+    fake_provider(monkeypatch, fail={"integrate.api.nvidia.com"})
+    before = (cloud.home / "anexis.toml").read_text()
+    assert await models.heal(cloud) == {}
+    assert (cloud.home / "anexis.toml").read_text() == before
+
+
+async def test_setup_checks_the_preset_models_against_what_the_provider_has_today(live, settings, monkeypatch):
+    fake_provider(monkeypatch)
+    _, client = await live()
+    async with httpx.AsyncClient(base_url=client.url) as http:
+        reply = (await http.post("/setup", json={"preset": "cloud", "name": "Nex", "keys": {"NVIDIA_API_KEY": "nvapi-abcdefghijklmnop"}})).json()
+    assert reply["healed"]["nvidia"]["chat"] == ["meta/llama-3.3-70b-instruct", "meta/llama-4-70b-instruct"]
+    loaded = load_settings(env={"ANEXIS_HOME": str(settings.home)})
+    assert loaded.providers[0].models["chat"] == "meta/llama-4-70b-instruct" and loaded.control == "full"

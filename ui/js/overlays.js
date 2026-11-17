@@ -68,12 +68,16 @@ export async function restartBrain(say = () => {}) {
 export function keyFields(keys) {
   const inputs = new Map();
   const el = h("div", keys.map((key) => {
-    const input = h("input", { type: "password", placeholder: key.set ? "leave empty to keep it" : key.label, autocomplete: "off", spellcheck: false, "aria-label": key.label });
+    const input = h("input", {
+      type: key.secret === false ? "text" : "password", autocomplete: "off", "aria-label": key.label,
+      placeholder: key.set ? "leave empty to keep it" : key.secret === false ? "https://yourschool.instructure.com" : key.label,
+    });
     const warn = h("div.warnline");
     inputs.set(key.env, { input, warn });
     return h("div.keyrow",
       h("div", h("b", key.title), h("small", `Turns on: ${key.turns_on}`), h("small", `Get one: ${key.get_it}`)),
-      h("div", input, h("small.state", key.set ? `saved${key.ends ? `, ends in ...${key.ends}` : ""}. Type - to remove it.` : "")),
+      h("div", input, h("small.state", !key.set ? "" : key.secret === false ? `saved: ${key.ends}. Type - to remove it.`
+        : `saved${key.ends ? `, ends in ...${key.ends}` : ""}. Type - to remove it.`)),
       warn);
   }));
   return {
@@ -89,9 +93,44 @@ export function keyFields(keys) {
   };
 }
 
-export async function openKeys() {
+/** How Claude Code is signed in, with the button to sign in with a Claude
+ *  plan and the rule for switching to a cheaper model when the plan runs low. */
+async function claudeBlock(hooks) {
   let state;
-  try { state = await api.get("/setup"); } catch (e) { return toast(e.message, "bad"); }
+  try { state = await api.get("/claude?fresh=true"); } catch { return null; }
+  if (!state.installed) {
+    return h("div.prov", h("h4", h("b", "Claude for code"), h("span", "not installed")),
+      h("p", "Claude Code is not installed, so Anexis writes code with its own model. Open Setup and tick Claude Code to add it."));
+  }
+  const how = state.plan ? `signed in with your Claude plan${state.subscription ? ` (${state.subscription})` : ""}${state.email ? `, ${state.email}` : ""}`
+    : state.signed_in ? "signed in with an API key" : "not signed in";
+  const percent = h("input", { type: "text", value: String(state.switch_percent), inputMode: "numeric", style: "width:64px" });
+  const cheaper = h("input", { type: "text", value: state.switch_model, style: "width:110px", "aria-label": "Model to switch to" });
+  const said = h("small");
+  const save = async () => {
+    try {
+      await api.post("/claude", { switch_percent: Number(percent.value) || 0, switch_model: cheaper.value.trim() });
+      said.textContent = "Saved.";
+      hooks.onChange?.();
+    } catch (e) { said.textContent = e.message; }
+  };
+  return h("div.prov",
+    h("h4", h("b", "Claude for code"), h(`span${state.signed_in ? ".ok" : ".warn"}`, how)),
+    h("p", "You do not need an API key. A Claude plan (Pro or Max) works: sign in once and Claude writes your code on that plan."),
+    state.usage ? h("p", `Your plan is ${state.usage.percent.toFixed(0)}% used right now. Code tasks run on ${state.model}.`) : null,
+    h("div.actions",
+      h(`button.btn${state.signed_in ? "" : ".primary"}`, { type: "button", onclick: () => { closeSheet(); hooks.terminalAt("", "claude auth login"); } },
+        state.signed_in ? "Sign in again" : "Sign in with my Claude plan"),
+      state.signed_in ? h("button.btn.ghost", { type: "button", onclick: () => { closeSheet(); hooks.terminalAt("", "claude auth logout"); } }, "Sign out") : null),
+    h("div.inline", "When the plan is", percent, "% used, code on", cheaper, h("button.btn", { type: "button", onclick: save }, "Save"), said),
+    h("small", "0 turns the switch off. The model before the switch is Claude's own best one."));
+}
+
+export async function openKeys(hooks = {}) {
+  let state, claude;
+  try {
+    [state, claude] = await Promise.all([api.get("/setup"), claudeBlock(hooks)]);
+  } catch (e) { return toast(e.message, "bad"); }
   const fields = keyFields(state.keys), status = h("span.left");
   const save = h("button.btn.primary", { type: "button" }, "Save keys");
   save.onclick = async () => {
@@ -111,10 +150,111 @@ export async function openKeys() {
     save.disabled = false;
   };
   openSheet("Keys", [
+    claude,
     h("p", "Each key turns one thing on. They are saved in a private file on this computer and nowhere else. What you type stays hidden."),
     fields.el,
     h("div.sheet-foot", status, h("button.btn.ghost", { type: "button", onclick: () => closeSheet() }, "Cancel"), save),
   ]);
+}
+
+// ---- models --------------------------------------------------------------
+
+/** Which model does which job. The lists come live from each provider, so a
+ *  model that was retired shows up as gone, with something to use instead. */
+export async function openModels(hooks = {}) {
+  openSheet("Models", h("div.empty", "Asking each provider which models it has..."));
+  let state;
+  try { state = await api.get("/models"); } catch (e) { return openSheet("Models", h("p", e.message)); }
+  const status = h("span.left");
+  const blocks = state.providers.map((p) => ({ p, enabled: p.enabled, inputs: {} }));
+
+  const draw = () => {
+    const body = blocks.map((block, index) => {
+      const { p } = block;
+      const listId = `models-${p.name}`;
+      const sub = !p.has_key ? "needs a key" : p.reachable ? `${p.available.length} models` : "not reachable";
+      const toggle = h("input", { type: "checkbox", checked: block.enabled, onchange: (e) => { block.enabled = e.target.checked; draw(); } });
+      const rows = !block.enabled ? [] : state.roles.map((role) => {
+        const gone = p.missing.includes(p.models[role.name]);
+        const input = block.inputs[role.name] ||= h("input", {
+          type: "text", value: p.models[role.name] || "", placeholder: role.name === "chat" ? "pick a model" : "empty", "aria-label": `${p.title} ${role.name} model`,
+        });
+        input.setAttribute("list", listId);
+        const said = h("small", gone ? `${p.models[role.name]} is gone from ${p.title}.` : role.about);
+        if (gone) said.className = "bad";
+        const use = p.suggested[role.name] && (gone || !p.models[role.name])
+          ? h("button.btn.ghost", { type: "button", onclick: () => { input.value = p.suggested[role.name]; said.className = ""; said.textContent = "Suggested. Press Try to check it answers."; } }, "Use suggested")
+          : null;
+        const tryIt = h("button.btn.ghost", { type: "button" }, "Try");
+        tryIt.onclick = async () => {
+          if (!input.value.trim()) return;
+          tryIt.disabled = true;
+          said.className = "";
+          said.textContent = "Asking it...";
+          try {
+            const r = await api.post("/models/test", { provider: p.name, model: input.value.trim(), role: role.name });
+            said.className = r.ok ? "ok" : "bad";
+            said.textContent = r.ok ? `It works. It said: ${r.said} (${(r.ms / 1000).toFixed(1)} s)` : r.error;
+          } catch (e) { said.className = "bad"; said.textContent = e.message; }
+          tryIt.disabled = false;
+        };
+        return h("div.model-row", h("b", role.name), input, h("div.actions", use, tryIt), said);
+      });
+      const pull = p.name === "ollama" && block.enabled ? ollamaPull(p, () => openModels(hooks)) : null;
+      return h(`div.prov${block.enabled ? "" : ".off"}`,
+        h("h4", h("label", toggle, h("b", p.title)), h(`span${p.reachable ? ".ok" : block.enabled ? ".warn" : ""}`, sub),
+          index > 0 && block.enabled ? h("button.btn.ghost", { type: "button", title: "Try this one before the one above it",
+            onclick: () => { [blocks[index - 1], blocks[index]] = [blocks[index], blocks[index - 1]]; draw(); } }, "Move up") : null),
+        h("p", p.error && block.enabled ? `${p.about} ${p.error}` : p.about),
+        h("datalist", { id: listId }, p.available.map((m) => h("option", { value: m }))),
+        ...rows, pull);
+    });
+    $("#sheet-body").replaceChildren(
+      h("p", "Anexis tries the providers from the top down and moves to the next when one is down. Type in a box to search that provider's models. ", h("b", "Try"), " asks the model one word, so you know it works before you save."),
+      ...body,
+      h("div.sheet-foot", status, h("button.btn.ghost", { type: "button", onclick: () => closeSheet() }, "Cancel"),
+        h("button.btn.primary", { type: "button", onclick: save }, "Save and restart")));
+  };
+
+  const save = async () => {
+    const providers = blocks.map((block) => ({
+      name: block.p.name, enabled: block.enabled,
+      models: Object.fromEntries(state.roles.map((r) => [r.name, block.inputs[r.name] ? block.inputs[r.name].value.trim() : block.p.models[r.name] || ""])),
+    }));
+    try {
+      await api.post("/models", { providers });
+    } catch (e) { status.textContent = e.message; return; }
+    setLocked(true);
+    const ok = await restartBrain((line) => { status.textContent = line; });
+    setLocked(false);
+    if (ok) { closeSheet(); toast("Models saved."); hooks.onSaved?.(); }
+  };
+  draw();
+}
+
+/** Ollama on this computer: download another model, with progress. */
+function ollamaPull(p, done) {
+  const input = h("input", { type: "text", placeholder: "a model to download, like qwen3:8b", "aria-label": "Model to download" });
+  input.setAttribute("list", "ollama-starters");
+  const said = h("small", p.installed ? "Downloads through Ollama. Any name from ollama.com/library works." : "Ollama is not installed yet. Downloading a model installs it first.");
+  const go = h("button.btn", { type: "button" }, p.installed ? "Download" : "Install and download");
+  go.onclick = async () => {
+    const model = input.value.trim();
+    if (!model) return;
+    go.disabled = true;
+    let ok = false;
+    try {
+      await api.stream("POST", "/setup/install", { ollama: true, models: [model] }, (event) => {
+        if (event.line) said.textContent = event.line;
+        if (event.state === "failed") said.textContent = event.message;
+        if (event.state === "finished") ok = event.ok;
+      });
+    } catch (e) { said.textContent = e.message; }
+    go.disabled = false;
+    if (ok) { toast(`${model} is ready.`); done(); }
+  };
+  return h("div.model-row", h("b", "get"), input, h("div.actions", go), said,
+    h("datalist", { id: "ollama-starters" }, (p.starters || []).map((m) => h("option", { value: m }))));
 }
 
 // ---- checkup -------------------------------------------------------------
@@ -182,7 +322,7 @@ export async function openAbout() {
 
 // ---- the app screen ------------------------------------------------------
 
-const THEMES = { ion: "#4fe3ff", ember: "#ff9d3c", verdant: "#5dff9b", ultra: "#b48cff" };
+const THEMES = { tron: "#aacfd1", ion: "#4fe3ff", ember: "#ff9d3c", verdant: "#5dff9b", ultra: "#b48cff" };
 
 export async function openApp(hooks) {
   let info, settings;

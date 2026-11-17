@@ -10,6 +10,7 @@ starts it, shows it and packs it.
 | `seed.js` | The live copy: first copy, version change with a backup, fallback when an edited frame is broken. Plain Node, tested by `npm test`. |
 | `frame.js` | The window. Starts `python -m anexis desktop`, waits for it to answer, shows the deck, stops everything on quit. |
 | `build.ps1` | Builds `dist\AnexisSetup.exe` on Windows. |
+| `update.ps1` | Updates an installed Anexis from this repo. No rebuild, no reinstall. |
 | `assets/` | The icon. |
 
 ## Build the installer
@@ -32,6 +33,16 @@ reuses the Python and Node from the last build, for when only the app changed.
 
 The installer is not code signed, so Windows SmartScreen shows a warning the
 first time. Choose More info, then Run anyway.
+
+## Update without rebuilding
+
+```powershell
+powershell -ExecutionPolicy Bypass -File update.ps1
+```
+
+Pulls the newest code and copies it over the live copy (after backing it up).
+Use this for normal updates. Build the installer again only when `uv.lock`
+changed, since the Python packages live inside the installer.
 
 ## Where things go on the PC
 

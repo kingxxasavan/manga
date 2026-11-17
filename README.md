@@ -32,30 +32,39 @@ stay one click away in the top bar.
 
 ### The deck
 
+Laid out like eDEX UI: the machine on the left, the shell in the middle, the
+network on the right, the filesystem and a keyboard along the bottom.
+
 ```
- ANEXIS  [general]  model ollama  memory 214  tools 180     [FULL CONTROL] [STOP]  setup keys checkup about me app
- +-----------+---------------------------------------+----------------+
- | SYSTEM    | CHAT | TERMINAL                       | MEMORY | TOOLS |
- | cpu, cores|  you   whats using my memory          | search, kinds  |
- | memory    |  nex   run_shell ...            done  | what it knows  |
- | gpu, disks|        Chrome, 2.1 GB ...             | forget, add    |
- | network   +-------------------+-------------------+                |
- | programs  | FILES             | ACTIVITY          |                |
- +-----------+-------------------+-------------------+----------------+
+ ANEXIS [general]  model  memory  tools            [FULL CONTROL] [STOP]  setup models keys checkup about me app
+ PANEL       SYSTEM   /CHAT/TERMINAL/MEMORY/TOOLS/                         PANEL      NETWORK
+   03:40:04           you   whats due this week                            NETWORK STATUS  online
+ date uptime type     nex   canvas_upcoming ...            done            WORLD VIEW      (globe)
+ CPU USAGE  graphs          2 things. Problem set 4 is due ...             NETWORK TRAFFIC
+ MEMORY     dot grid                                                       ANEXIS  model, Claude plan, due
+ TOP PROCESSES                                                             ACTIVITY  every action, live
+ FILESYSTEM  tiles, path, terminal here            [ on screen keyboard                                  ]
 ```
 
-| Panel | What it is |
+| Part | What it is |
 |---|---|
-| Chat | Talk to it. Tool calls show as they run. Every slash command from the terminal chat works, plus `/control`, `/theme`, `/setup`, `/keys`, `/app`. |
+| Chat | Talk to it. Tool calls show as they run. Every slash command from the terminal chat works, plus `/control`, `/models`, `/theme`, `/setup`, `/keys`, `/app`. |
 | Terminal | A real shell on the PC (PowerShell on Windows). |
-| System | CPU, cores, memory, GPU, disks, network and the busiest programs, live. |
 | Memory | What it remembers. Search, filter, add, forget. The memories used for the last reply are marked. |
-| Tools | Tool servers and their state, every tool, what is due soon. |
-| Files | Browse the disk, open things, start a terminal in a folder. |
+| Tools | Tool servers and their state, every tool, what is due soon. A server that failed shows what it printed. |
+| System | A big clock, CPU graphs, the memory grid (bright is in use, dim is held by the system, faint is free), disks, the busiest programs. |
+| Network | The link and its address, a turning globe drawn from real coastlines, traffic. |
+| Anexis | Which model is answering, how full your Claude plan is and what it codes on, what is due in two days. |
 | Activity | Every action Anexis takes, as it happens. Click one for its output. |
+| Filesystem | Browse the disk, open things, start a terminal in a folder. |
+| Keyboard | Lights up as you type. Click a key to type it into the chat box or the terminal. |
 
-Four themes (ion, ember, verdant, ultra) in the App screen. On a narrow window it
-shows one panel at a time.
+Five themes (tron, ion, ember, verdant, ultra) in the App screen. On a narrow
+window it shows one part at a time.
+
+It is built on Anexis's own code, not on eDEX UI's. That project stopped in 2021,
+needs an Electron too old to build, and reads the PC straight from the window,
+which is exactly what the lock on this app forbids.
 
 The same deck runs anywhere Anexis does: `anexis ui` opens it in your browser.
 
@@ -102,6 +111,71 @@ Claude Code in it.
 A new installer only matters when the bundled Python, Node or packages change.
 When a newer version is installed, your edited folder is moved aside whole to
 `app-backup-<version>-<date>` next to it, never merged over or deleted.
+
+### Update it without rebuilding
+
+```powershell
+cd desktop
+powershell -ExecutionPolicy Bypass -File update.ps1
+```
+
+That pulls the newest code and copies it over the live copy, after keeping a
+backup of it. Anexis can stay open: the screen reloads and the brain restarts by
+themselves. The installer is only needed again when the bundled Python, Node or
+Python packages change.
+
+### Models
+
+**Models** in the top bar shows every provider with the models it really has
+right now, asked live from the provider. Type in a box to search them, press
+**Try** to ask a model one word before you save, and move a provider up to have
+it tried first.
+
+| Provider | Needs |
+|---|---|
+| Ollama on this computer | Ollama. Any model can be downloaded from the same screen. |
+| Nvidia | `NVIDIA_API_KEY`, free at build.nvidia.com |
+| Ollama cloud | `OLLAMA_API_KEY`, from ollama.com/settings/keys |
+
+Each provider has five jobs: `chat`, `coder`, `small`, `embed` and `vision`. Only
+`chat` is needed, the others fall back to it or switch a feature off.
+
+Providers retire models. When the one Anexis is set to use is gone, the deck
+says so at the top with one button that switches to the closest current model,
+and setup does that check by itself when you pick a preset. Nothing here depends
+on a model name staying alive.
+
+### Claude with your plan, no API key
+
+A Claude plan (Pro or Max) is enough for code. In **Keys**, press **Sign in with
+my Claude plan**. It opens the terminal tab on `claude auth login`, which signs
+in through your browser. The Keys screen and Checkup then show how it is signed in.
+
+Claude codes on its own best model. Anexis asks Claude Code how full the plan is
+(the same numbers `/usage` shows, which costs no usage), and once it reaches
+**85%** code tasks run on **Opus** to stretch what is left. Both the percent and
+the model are in the Keys screen, and as `claude_switch_percent` and
+`claude_switch_model` under `[coder]` in `anexis.toml`. 0 turns the switch off.
+The Anexis panel shows the plan's percent and which model code runs on. When the
+plan is fully used up, Anexis's own coder takes over, as before.
+
+### Canvas
+
+Put two things in **Keys**: your school's Canvas address (the one in your browser,
+like `https://yourschool.instructure.com`) and a Canvas token (in Canvas: Account,
+Settings, New Access Token). The token can only see what you see when logged in.
+
+| Ask | What happens |
+|---|---|
+| "what am I missing" | Past due work that is not handed in, across every class, oldest first, with links |
+| "whats due this week" | Assignments, quizzes and discussions that are not handed in yet |
+| "download the slides from chem" | The pptx, ppt, pdf and key files of that class go to `workspace/canvas/<class>/`. Say "all my classes" for everything, or "all files" for more than slides. Files already there are skipped. |
+
+Every hour, and when Anexis starts, missing and upcoming work is copied into its
+own assignment list. That is what drives reminders: work due within two days
+shows in the Anexis panel, pops up once a day as a notification, and is part of
+what Anexis knows in every reply. Work that gets handed in is ticked off by itself.
+A class that hides its Files page still works, through the files its modules link.
 
 ## Set it up on a Linux server
 
@@ -411,7 +485,7 @@ Keys go in `.env` (see `.env.example`), never in `anexis.toml`.
 ```bash
 uv sync
 uv sync --extra desktop   # adds screen, keyboard and mouse control
-uv run pytest        # 358 tests
+uv run pytest        # 389 tests
 uv run ruff check anexis tests
 ```
 
@@ -430,7 +504,8 @@ Checked: the whole test suite, plus a real run of `anexis serve`, `anexis ask`,
 server speaking the same API as Ollama. One real Claude Code run through Anexis's
 own runner (it wrote and ran a file). `anexis train --offline`, 32 of 32.
 
-For the desktop app, checked: the deck in a real browser (above), the supervisor
+For the desktop app, checked: the installer was built and run on a real Windows
+PC by the owner (0.2.0). On the build machine: the deck in a real browser (above), the supervisor
 restarting a real brain, the real app window started on Linux under a virtual
 display (it started the brain and showed the deck), the bundled Python steps of
 `build.ps1` with their Linux twins (a standalone Python with the packages
@@ -440,12 +515,23 @@ app folder with electron builder.
 Not run, because the build machine is Linux. These were written against how
 Windows documents them, so expect to shake a few out on the first real run:
 
-1. `build.ps1` itself and the last step that makes `AnexisSetup.exe`.
-2. Anything on real Windows: the installed app, PowerShell as the shell tool, the
-   ConPTY terminal (`pywinpty`), window control (`pygetwindow`), the real keyboard
-   and mouse (`pyautogui`), opening apps by name.
-3. Installing Ollama from setup in the app, and Claude Code on Windows.
+1. `update.ps1`.
+2. On real Windows: PowerShell as the shell tool, the ConPTY terminal
+   (`pywinpty`), window control (`pygetwindow`), the real keyboard and mouse
+   (`pyautogui`), opening apps by name.
+3. Installing Ollama from the app.
 4. `see_screen` with a real vision model, and the microphone button.
+5. The model lists of Nvidia and Ollama cloud. The build machine cannot reach
+   either, so the picker was tested against a stand in that answers the same
+   way. Ollama cloud's address (`https://ollama.com/v1`) is the least certain.
+6. Claude plan usage. The `/usage` report and `claude auth status` are read the
+   way Claude Code documents them, tested against a stand in program.
+7. A real Canvas. The tools were tested against a stand in school site that
+   answers the way Canvas documents.
+8. The five npx tool servers that failed on Windows (chart, docs, files, think,
+   youtube). The likely cause is several npx downloads at once fighting over
+   the npm cache, so they now start one at a time and get a second try. If one
+   still fails, Tools in the app now shows what it printed.
 
 Not checked there, so check with `anexis doctor` on your server:
 

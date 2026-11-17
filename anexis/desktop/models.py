@@ -146,15 +146,42 @@ def _ollama_on_windows() -> bool:
     return bool(find_ollama())
 
 
-async def state(settings) -> dict:
+async def state(settings, env=None) -> dict:
     """Every provider, saved ones first in the order they are tried, each
-    with the models it really has right now."""
+    with the models it really has right now. `env` is for keys that were
+    just saved and are not loaded into the running settings yet."""
+    env = settings.env if env is None else env
     saved = read_config(settings)["providers"]
     names = [p["name"] for p in saved]
     entries = [(_entry(p["name"], p), True) for p in saved]
     entries += [(_entry(c["name"], None), False) for c in CATALOG if c["name"] not in names]
-    looked = await asyncio.gather(*(_look(entry, enabled, settings.env) for entry, enabled in entries))
+    looked = await asyncio.gather(*(_look(entry, enabled, env) for entry, enabled in entries))
     return {"roles": [{"name": r, "about": ROLE_ABOUT[r]} for r in ROLES], "providers": list(looked)}
+
+
+async def heal(settings, env=None) -> dict:
+    """Swaps models the provider no longer has for its closest current ones,
+    and saves. A retired model otherwise leaves Anexis unable to answer at
+    all. Returns {provider: {role: [old, new]}}, empty when nothing was wrong
+    or nothing could be suggested."""
+    now = await state(settings, env)
+    changed: dict = {}
+    wanted = []
+    for p in now["providers"]:
+        models = dict(p["models"])
+        for role, pick in p["suggested"].items():
+            if p["enabled"] and models.get(role) != pick:
+                changed.setdefault(p["name"], {})[role] = [models.get(role, ""), pick]
+                models[role] = pick
+        # a job whose model is gone and has no stand in is left empty, which falls back to the chat model
+        for role, model in list(models.items()):
+            if model in p["missing"] and role not in p["suggested"] and p["enabled"]:
+                changed.setdefault(p["name"], {})[role] = [model, ""]
+                models[role] = ""
+        wanted.append({"name": p["name"], "enabled": p["enabled"], "models": models})
+    if changed:
+        save(settings, wanted)
+    return changed
 
 
 def save(settings, wanted: list[dict]) -> Path | None:

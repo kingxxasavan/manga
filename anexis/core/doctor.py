@@ -90,7 +90,7 @@ async def doctor(anexis) -> list[dict]:
         elif state == "off":
             out.append(check(f"tool: {name}", True, "off in tools/manifest.yaml"))
         else:
-            out.append(check(f"tool: {name}", False, info.get("error", state), "run `anexis tools sync` to see the full error"))
+            out.append(check(f"tool: {name}", False, info.get("error", state), "the full output is in the tool-logs folder inside the Anexis home folder, and under Tools in the app"))
 
     whisper = importlib.util.find_spec("faster_whisper") is not None
     out.append(check("voice in", whisper, "speech to text ready" if whisper else "faster-whisper not installed", "bash setup.sh and say yes to voice", optional=True))

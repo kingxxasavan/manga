@@ -71,6 +71,12 @@ export function showTerminal() {
   requestAnimationFrame(() => { resize(); term?.focus(); });
 }
 
+/** Types into the running shell, as if on the keyboard. */
+export function sendKeys(data) {
+  if (socket?.readyState === WebSocket.OPEN) socket.send(encoder.encode(data));
+  term?.focus();
+}
+
 export function retheme() {
   if (term) term.options.theme = colours();
 }

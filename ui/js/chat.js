@@ -17,17 +17,19 @@ const COMMANDS = [
   ["/stop", "stop what Anexis is doing"],
   ["/voice", "read replies out loud, on or off"],
   ["/setup", "preset, options and downloads"],
-  ["/keys", "API keys"],
+  ["/models", "which model does which job"],
+  ["/keys", "API keys, Claude sign in, Canvas"],
   ["/doctor", "check that every part works"],
   ["/aboutme", "tell Anexis about yourself"],
   ["/app", "this app: live editing, theme, restart"],
-  ["/theme", "ion, ember, verdant or ultra"],
+  ["/theme", "tron, ion, ember, verdant or ultra"],
   ["/help", "this list"],
 ];
 const IDEAS = [
   "What can you do on this computer?",
-  "Whats using the most memory right now?",
-  "Open my Downloads folder",
+  "Whats due this week?",
+  "What am I missing on Canvas?",
+  "Download the slides from all my classes",
   "/code a script that sorts my Desktop into folders by file type",
 ];
 
@@ -254,10 +256,11 @@ async function command(line) {
     case "voice": return hooks.toggleVoice?.();
     case "setup": return open("setup");
     case "keys": return open("keys");
+    case "models": return open("models");
     case "doctor": return open("doctor");
     case "aboutme": return open("about");
     case "app": return open("app");
-    case "theme": return hooks.setTheme?.(arg) || note("Themes: ion, ember, verdant, ultra");
+    case "theme": return hooks.setTheme?.(arg) || note(`Themes: ${(hooks.themes || []).join(", ")}`);
     case "tools": return hooks.showTools?.();
     default: return note(`No command /${head}. Type /help for the list.`);
   }

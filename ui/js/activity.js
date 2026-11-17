@@ -25,11 +25,11 @@ export function add(event) {
   row.state.textContent = WORDS[event.status] + (event.ms !== undefined ? ` · ${event.ms < 1000 ? event.ms + " ms" : (event.ms / 1000).toFixed(1) + " s"}` : "");
   if (event.preview) row.out.textContent = event.preview;
   if (event.status === "failed") row.out.hidden = false;
-  $("#activity-count").textContent = `${total} ${total === 1 ? "action" : "actions"} this session`;
+  $("#activity-count").textContent = `${total} ${total === 1 ? "action" : "actions"}`;
 }
 
 export async function initActivity() {
-  list = h("div.acts", h("div.empty", "Nothing yet. Every command, file change and click Anexis makes shows up here."));
+  list = h("div.acts", h("div.empty", "Nothing yet. Every command, file change and click shows up here."));
   $("#activity").replaceChildren(list);
   try {
     for (const event of await api.get("/activity")) add(event);
