@@ -80,6 +80,7 @@ class Settings:
     history_messages: int = 24
     history_chars: int = 24000  # about 6000 tokens of past conversation
     learn: bool = True
+    seed_owner: bool = True  # load what the owner already said on the very first start
     consolidate_minutes: int = 60
 
     outside_tools: bool = True  # start the tool servers in tools/manifest.yaml

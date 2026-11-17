@@ -32,6 +32,7 @@ def make_app(settings, *script, **kw):
     settings.home.mkdir(parents=True, exist_ok=True)
     settings.manifest = settings.home / "none.yaml"  # no outside tool servers in these tests
     settings.learn = False
+    settings.seed_owner = False  # tests count memories, so they start empty
     _, AnexisApp, create_app, FakeRouter = _lazy()
     anexis = AnexisApp(settings, router=FakeRouter(*script, **kw))
     return anexis, create_app(anexis)

@@ -313,8 +313,10 @@ export async function openAbout() {
       status.textContent = e.message;
     }
   };
+  const blank = fields.filter((f) => !f.rich && !f.input.value.trim()).length;
   openSheet("About me", [
-    h("p", "Anexis uses this in every reply, so it never has to ask twice. Leave anything empty. It stays on this computer."),
+    h("p", "Anexis uses this in every reply, so it never has to ask twice. What it already knew is filled in. ",
+      blank ? h("b", `${blank} left empty. `) : null, "Leave anything empty. It stays on this computer."),
     h("div.form", fields.map((f) => f.el)),
     h("div.sheet-foot", status, h("button.btn.ghost", { type: "button", onclick: () => closeSheet() }, "Cancel"), h("button.btn.primary", { type: "button", onclick: save }, "Save")),
   ]);

@@ -47,6 +47,15 @@ class AnexisApp:
         return self._voice
 
     async def start(self) -> None:
+        if self.settings.seed_owner:
+            from anexis.profile.seed import seed_owner
+
+            try:
+                report = seed_owner(self.memory)
+                if not report["skipped"]:
+                    self.memory.log("owner_seeded", report)
+            except Exception as e:  # knowing less is never a reason not to start
+                self.memory.log("owner_seed_failed", {"error": str(e)[:300]})
         # Tool servers can take a while the first time (they download), so the
         # server answers right away and tools join as they come up.
         self._tasks.append(asyncio.create_task(self._start_tools()))

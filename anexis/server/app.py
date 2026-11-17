@@ -101,6 +101,7 @@ def create_app(anexis) -> FastAPI:
         return {
             "name": settings.name,
             "memories": anexis.memory.count(),
+            "about_me": export_profile(anexis.memory),
             "tools": len(anexis.registry),
             "tools_offered": settings.max_tools,
             "control": settings.control,
@@ -192,9 +193,16 @@ def create_app(anexis) -> FastAPI:
                     yield json.dumps(nxt.result()) + "\n"
                     nxt = None
             finally:
+                # The window went away. The feed may be mid wait: stop that
+                # wait and let it finish before closing the feed, or closing
+                # it while it still runs is an error.
                 if nxt:
                     nxt.cancel()
-                await feed.aclose()
+                    await asyncio.gather(nxt, return_exceptions=True)
+                try:
+                    await feed.aclose()
+                except RuntimeError:
+                    pass
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
 

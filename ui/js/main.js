@@ -203,6 +203,19 @@ async function checkModels() {
   }
 }
 
+/** About Me is what Anexis always knows about its owner. Until it has at
+ *  least a name it says so, once per window, with the form one click away.
+ *  What Anexis already knows is filled in there, so only the rest is asked. */
+function askAboutMe(state) {
+  const known = state?.about_me || {};
+  $('[data-open="about"]').classList.toggle("alert", !known.name);
+  if (known.name || !$("#banner").hidden || sessionStorage.getItem("anexis-asked-about")) return;
+  sessionStorage.setItem("anexis-asked-about", "1");
+  banner("I know how you like to be talked to, but not who you are yet. Fill in your name, school and classes once and I never have to ask.", "",
+    h("span", h("button", { type: "button", onclick: () => { banner(""); open("about"); } }, "fill in About me"), "  ",
+      h("button", { type: "button", onclick: () => banner("") }, "later")));
+}
+
 // ---- live events ---------------------------------------------------------
 function reloadDeck(changed) {
   if (changed.length && changed.every((f) => f.endsWith(".css"))) {
@@ -365,7 +378,10 @@ async function start() {
   // A brand new install opens setup by itself. After that it is behind the Setup button.
   try {
     if (!(await api.get("/setup")).done && !overlays.sheetOpen()) openSetup();
-    else checkModels();
+    else {
+      await checkModels();
+      askAboutMe(await pulse());
+    }
   } catch { /* setup stays one click away */ }
   $("#input").focus();
 }

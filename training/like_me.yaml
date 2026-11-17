@@ -46,10 +46,25 @@ teach:
     offline:
       - {op: add, kind: preference, importance: 0.8, text: "Always wants the most elite, maxed out version of anything made, never the basic one"}
 
-  - say: you run on my own server with ollama or nvidia and you got a sql memory that keeps learning about me
-    learns: ["ollama|nvidia|server"]
+  - say: you run on my own pc as a windows app now, with ollama or nvidia and you got a sql memory that keeps learning about me
+    learns: ["ollama|nvidia|windows"]
     offline:
-      - {op: add, kind: fact, text: "Runs their assistant on their own server with Ollama or Nvidia and a SQL memory that keeps learning"}
+      - {op: add, kind: fact, text: "Runs their assistant as a Windows app on their own PC, with Ollama or Nvidia and a SQL memory that keeps learning"}
+
+  - say: i use canvas for school so keep track of my missing and upcoming assignments and remind me, and grab the slides from my classes when i ask
+    learns: ["canvas"]
+    offline:
+      - {op: add, kind: fact, importance: 0.8, text: "Uses Canvas for school and wants missing and upcoming assignments tracked and reminded, and class slides downloaded when asked"}
+
+  - say: i got claude pro not an api key, so code goes thru my plan and when its at 85 percent switch to opus
+    learns: ["claude"]
+    offline:
+      - {op: add, kind: fact, text: "Has a Claude Pro plan, not an API key. Code runs on the plan, switching to Opus when the plan is 85 percent used"}
+
+  - say: i like the edex ui look, black background, futuristic, but better than the original
+    learns: ["edex|black|futuristic"]
+    offline:
+      - {op: add, kind: preference, text: "Likes the eDEX UI look: black background and futuristic, but better than the original"}
 
   - say: and like i said no dashes ever when you write to me
     reinforces: ["dash"]
