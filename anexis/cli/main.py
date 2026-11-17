@@ -108,10 +108,18 @@ def cmd_serve(settings: Settings, args) -> None:
         sys.exit("Cannot start:\n" + "\n".join(f"  {p}" for p in problems))
     settings.home.mkdir(parents=True, exist_ok=True)
     write_pid(settings.home, os.getpid())
+    app = create_app(AnexisApp(settings))
+    # Open streams (the activity feed) must not hold up a restart for long.
+    server = uvicorn.Server(uvicorn.Config(
+        app, host=settings.host, port=settings.port, log_level="warning", timeout_graceful_shutdown=3,
+    ))
+    app.state.server = server
     try:
-        uvicorn.run(create_app(AnexisApp(settings)), host=settings.host, port=settings.port, log_level="warning")
+        server.run()
     finally:
         pid_file(settings.home).unlink(missing_ok=True)
+    # 75 asks the supervisor (`anexis desktop`) to start the brain again.
+    sys.exit(getattr(app.state, "exit_code", 0))
 
 
 def cmd_setup(settings: Settings, args) -> None:

@@ -134,6 +134,16 @@ def _output(command: list[str]) -> str:
         return ""
 
 
+def find_ollama() -> str | None:
+    """Ollama on PATH, or where its Windows installer puts it."""
+    found = shutil.which("ollama")
+    if found:
+        return found
+    local = os.environ.get("LOCALAPPDATA")
+    candidate = Path(local) / "Programs" / "Ollama" / "ollama.exe" if local else None
+    return str(candidate) if candidate and candidate.is_file() else None
+
+
 def detect_machine() -> Machine:
     sizes = [int(x) for x in re.findall(r"\d+", _output(
         ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"]))]
@@ -144,7 +154,7 @@ def detect_machine() -> Machine:
     return Machine(
         vram_gb=max(sizes) / 1024 if sizes else 0,
         ram_gb=ram,
-        has_ollama=bool(shutil.which("ollama")),
+        has_ollama=bool(find_ollama()),
         node_major=int(node.group(1)) if node else 0,
         has_claude=bool(shutil.which("claude")),
         has_systemd=bool(shutil.which("systemctl")) and Path("/run/systemd/system").is_dir(),
@@ -159,7 +169,7 @@ def recommend(machine: Machine, env: dict) -> str:
     return "cloud" if env.get("NVIDIA_API_KEY") else "light"
 
 
-def build_toml(preset: Preset, name: str) -> str:
+def build_toml(preset: Preset, name: str, control: str = "") -> str:
     lines = [
         f"# Written by `anexis setup` with the {preset.name} preset. Edit freely.",
         "# Run `anexis setup` again to redo it. Your old file is backed up first.",
@@ -175,10 +185,42 @@ def build_toml(preset: Preset, name: str) -> str:
         'api_key_env = "NVIDIA_API_KEY"', "embed_input_type = true", "[providers.models]",
         f'chat = "{NVIDIA_CHAT}"', f'embed = "{NVIDIA_EMBED}"',
     ]
-    for section, values in (("memory", preset.memory), ("agent", preset.agent)):
+    agent: dict = dict(preset.agent)
+    if control:
+        agent["control"] = json.dumps(control)  # "full" or "ask", see the README
+    for section, values in (("memory", preset.memory), ("agent", agent)):
         if values:
             lines += ["", f"[{section}]"] + [f"{key} = {value}" for key, value in values.items()]
     return "\n".join(lines) + "\n"
+
+
+def apply_choices(
+    home: Path,
+    preset: str,
+    name: str,
+    env_changes: dict[str, str] | None = None,
+    plan: dict[str, str] | None = None,
+    control: str = "",
+) -> Path | None:
+    """Writes the settings a setup run decided on. Used by the terminal setup
+    window and by setup in the desktop app. Returns the backup of the old
+    settings file when there was one."""
+    if preset not in PRESETS:
+        raise ValueError(f"Unknown preset {preset!r}. Pick one of: {', '.join(PRESETS)}")
+    if control not in ("", "ask", "full"):
+        raise ValueError('control must be "ask" or "full"')
+    home = Path(home)
+    home.mkdir(parents=True, exist_ok=True)
+    config, backup = home / "anexis.toml", None
+    if config.exists():
+        backup = home / f"anexis.toml.bak-{time.strftime('%Y%m%d-%H%M%S')}"
+        shutil.copy2(config, backup)
+    config.write_text(build_toml(PRESETS[preset], name, control), encoding="utf-8")
+    if env_changes:
+        update_env_file(home / ".env", env_changes)
+    if plan is not None:
+        write_plan(home / "setup-plan", plan)
+    return backup
 
 
 def _env_line(key: str, value: str) -> str:
@@ -379,16 +421,9 @@ def run_wizard(
         say("  Cancelled. Nothing was changed.")
         return Result(preset=preset, cancelled=True, home=home)
 
-    home.mkdir(parents=True, exist_ok=True)
-    config = home / "anexis.toml"
-    if config.exists():
-        backup = home / f"anexis.toml.bak-{time.strftime('%Y%m%d-%H%M%S')}"
-        shutil.copy2(config, backup)
+    backup = apply_choices(home, preset, name, env_changes, plan)
+    if backup:
         say(f"  Your old settings are backed up as {backup.name}")
-    config.write_text(build_toml(chosen, name))
-    if env_changes:
-        update_env_file(home / ".env", env_changes)
-    write_plan(home / "setup-plan", plan)
     say(f"  Saved to {home}")
     if remote:
         say(f"  On the other machine put ANEXIS_URL=http://<this server>:8765 and the same ANEXIS_TOKEN "

@@ -1,6 +1,6 @@
 [project]
 name = "anexis"
-version = "0.1.0"
+version = "0.2.0"
 description = "Anexis: a personal AI assistant server with adaptive SQL memory, tools, code creation and voice"
 requires-python = ">=3.11"
 dependencies = [
@@ -14,6 +14,7 @@ dependencies = [
     "rich>=13.7",
     "ddgs>=9.0",
     "psutil>=6.0",
+    "websockets>=13",  # the terminal panel talks to the server over a socket
 ]
 
 [project.optional-dependencies]

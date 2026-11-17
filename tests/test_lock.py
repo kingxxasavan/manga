@@ -1,7 +1,7 @@
 import httpx
 
-from anexis.desktop.token import ensure_token
 from anexis.config import read_dotenv
+from anexis.desktop.token import ensure_token
 
 
 async def get(client, path, **headers):

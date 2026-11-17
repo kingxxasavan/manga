@@ -20,7 +20,6 @@ from anexis.memory.store import KINDS
 from anexis.profile.about import export_profile, import_profile, save_profile_file
 from anexis.tools.builtin.core import due_soon
 
-
 PUBLIC = ("/", "/ui")  # the deck's own files hold no secrets, everything else needs the token
 LOCAL_NAMES = LOOPBACK | {"[::1]"}
 
