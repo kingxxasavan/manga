@@ -68,7 +68,7 @@ async def doctor(anexis) -> list[dict]:
     node = await _version("node", tool_path())
     major = int(re.search(r"v?(\d+)", node).group(1)) if node and re.search(r"v?(\d+)", node) else 0
     out.append(check("node", major >= 24, node or "not installed", "run bash setup.sh again and say yes to Node, the npm tool servers need version 24 or newer"))
-    uvx = shutil.which("uvx")
+    uvx = shutil.which("uvx", path=tool_path())
     out.append(check("uv", bool(uvx), uvx or "not installed", "install uv, the Python tool servers are run with uvx"))
 
     if not settings.outside_tools:

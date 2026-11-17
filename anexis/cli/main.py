@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -16,6 +15,7 @@ from rich.console import Console
 
 from anexis.cli.client import AnexisClient
 from anexis.config import LOOPBACK, Settings, load_settings
+from anexis.platform import is_anexis_server, spawn_kwargs, stop_process
 
 console = Console()
 
@@ -51,7 +51,7 @@ async def ensure_server(settings: Settings) -> AnexisClient:
     with open(settings.home / "server.log", "a") as log:
         subprocess.Popen(  # noqa: ASYNC220
             [sys.executable, "-m", "anexis", "serve"], stdout=log, stderr=log,
-            stdin=subprocess.DEVNULL, start_new_session=True,
+            stdin=subprocess.DEVNULL, **spawn_kwargs(detached=True),
         )
     console.print("[dim] starting the server...[/dim]")
     deadline = time.monotonic() + 60
@@ -79,30 +79,13 @@ def stop_server(home) -> bool:
     path = pid_file(home)
     try:
         pid = int(path.read_text().strip())
-        command = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
     except (OSError, ValueError):
         path.unlink(missing_ok=True)
         return False
-    words = [part.rsplit(b"/", 1)[-1] for part in command]
-    if b"serve" not in words or not any(w in (b"anexis", b"anexis.exe") for w in words):
+    if not is_anexis_server(pid):
         path.unlink(missing_ok=True)
         return False
-    def running() -> bool:
-        try:  # third field of /proc/<pid>/stat is the state, Z means already dead
-            return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
-        except (OSError, IndexError):
-            return False
-
-    try:
-        os.kill(pid, signal.SIGTERM)
-        for _ in range(100):
-            if not running():
-                break
-            time.sleep(0.1)
-        else:
-            os.kill(pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    stop_process(pid)
     path.unlink(missing_ok=True)
     return True
 

@@ -7,13 +7,13 @@ never fades. The answers also stay searchable like any other memory.
 from __future__ import annotations
 
 import hashlib
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
 
 from anexis.memory.store import Memory
+from anexis.platform import private_file
 
 PREFIX = "about_me."
 STORE_KEY = "about_me"
@@ -139,7 +139,7 @@ def save_profile_file(home: Path, data: dict) -> Path:
     """A readable copy next to the database, private to the owner's user."""
     path = home / "about_me.yaml"
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
-    os.chmod(path, 0o600)
+    private_file(path)
     return path
 
 

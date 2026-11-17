@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from anexis.config import read_dotenv
+from anexis.platform import memory_gb, private_file
 
 EMBED = "nomic-embed-text"
 NVIDIA_CHAT = "meta/llama-3.3-70b-instruct"
@@ -136,11 +137,7 @@ def _output(command: list[str]) -> str:
 def detect_machine() -> Machine:
     sizes = [int(x) for x in re.findall(r"\d+", _output(
         ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"]))]
-    ram = 0.0
-    try:
-        ram = int(re.search(r"MemTotal:\s+(\d+)", Path("/proc/meminfo").read_text()).group(1)) / 1024 / 1024
-    except (OSError, AttributeError):
-        pass
+    ram = memory_gb()
     from anexis.tools.mcp_client import tool_path
 
     node = re.search(r"v(\d+)", _output([shutil.which("node", path=tool_path()) or "node", "--version"]))
@@ -209,7 +206,7 @@ def update_env_file(path: Path, changes: dict[str, str]) -> None:
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write("\n".join(out) + "\n" if out else "")
-    os.chmod(path, 0o600)
+    private_file(path)
 
 
 def key_warning(name: str, value: str) -> str:

@@ -66,6 +66,7 @@ class Settings:
     home: Path = Path("~/.anexis")
     workspace: Path = Path("~/anexis/workspace")
     manifest: Path = REPO_ROOT / "tools" / "manifest.yaml"
+    ui_dir: Path = REPO_ROOT / "ui"  # the deck, served as plain files
 
     host: str = "127.0.0.1"
     port: int = 8765
@@ -87,6 +88,9 @@ class Settings:
     max_tools: int = 12
     tool_output_chars: int = 6000
     confirm_timeout: float = 300.0
+    # "ask": risky tools wait for a yes. "full": every tool runs without asking.
+    # The desktop app sets full, since the point of it is to drive the PC.
+    control: str = "ask"
     # tool name -> "allow" or "ask", to loosen or tighten one tool
     permissions: dict[str, str] = field(default_factory=dict)
 
@@ -106,6 +110,9 @@ class Settings:
         self.home = Path(self.home).expanduser()
         self.workspace = Path(self.workspace).expanduser()
         self.manifest = Path(self.manifest).expanduser()
+        self.ui_dir = Path(self.ui_dir).expanduser()
+        if self.control not in ("ask", "full"):
+            raise ValueError(f'control must be "ask" or "full", not {self.control!r}')
         if not self.providers:
             self.providers = [_provider(p, self.env) for p in DEFAULT_PROVIDERS]
 
@@ -198,7 +205,7 @@ def load_settings(env: Mapping[str, str] | None = None, config_path=_UNSET) -> S
         return cfg.get(name, {})
 
     flat: dict = {"home": home, "env": merged}
-    for key in ("name", "workspace", "manifest"):
+    for key in ("name", "workspace", "manifest", "ui_dir"):
         if key in cfg:
             flat[key] = cfg[key]
     flat.update({k: v for k, v in section("server").items() if k in ("host", "port")})
@@ -217,6 +224,8 @@ def load_settings(env: Mapping[str, str] | None = None, config_path=_UNSET) -> S
     if merged.get("ANEXIS_OUTSIDE_TOOLS", "").lower() in ("0", "false", "no", "off"):
         flat["outside_tools"] = False
     flat["token"] = merged.get("ANEXIS_TOKEN", "")
+    if merged.get("ANEXIS_CONTROL"):
+        flat["control"] = merged["ANEXIS_CONTROL"].lower()
 
     known = Settings.__dataclass_fields__
     unknown = sorted(k for k in flat if k not in known)

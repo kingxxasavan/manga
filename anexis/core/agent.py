@@ -32,7 +32,13 @@ How to behave:
 - If the owner declines a tool, do not retry it. Say what you wanted to do and carry on.
 - Never invent facts, sources, file contents or tool results. If you do not know, say so.
 - You learn automatically from the conversation. Call remember only when asked to remember something.
-{about}{lessons}{style}{recalled}{due}{summary}"""
+{control}{about}{lessons}{style}{recalled}{due}{summary}"""
+
+
+FULL_CONTROL = (
+    "- You have full control of this computer. Tools run without asking first, so "
+    "think before anything that deletes, overwrites, sends or spends, and say what you did.\n"
+)
 
 
 def _block(title: str, lines: list[str]) -> str:
@@ -44,7 +50,8 @@ async def _deny(tool: Tool, args: dict, reason: str) -> bool:
 
 
 class Agent:
-    def __init__(self, settings: Settings, memory: Memory, router, registry: Registry, learner=None):
+    def __init__(self, settings: Settings, memory: Memory, router, registry: Registry, learner=None, events=None):
+        self.events = events
         self.settings = settings
         self.memory = memory
         self.router = router
@@ -119,6 +126,7 @@ class Agent:
             name=self.settings.name,
             now=datetime.now().astimezone().strftime("%A %Y-%m-%d %H:%M %Z"),
             mode=session["mode"],
+            control=FULL_CONTROL if self.settings.control == "full" else "",
             about=_block("About your owner (always true):", self._about()),
             lessons=_block("Standing instructions from your owner. Follow them in every reply:", [m.text for m in lessons]),
             style=_block("How your owner talks and thinks (learned from their own messages):", style_lines(self.memory)),
@@ -181,6 +189,11 @@ class Agent:
                 note = "I got an empty reply from the model. Ask again, and if it keeps happening run `anexis doctor`."
                 emit({"type": "text", "delta": note})
                 reply.content = note
+        except asyncio.CancelledError:
+            # The owner pressed stop. Keep the conversation in a state the next
+            # message can continue from.
+            self.memory.add_message(sid, "assistant", "(stopped before finishing)", meta={"stopped": True})
+            raise
         except (AllProvidersFailed, ProviderError) as e:
             message = f"No model could answer right now. {e}"
             emit({"type": "error", "message": message})
@@ -214,16 +227,29 @@ class Agent:
         args = tool_call.arguments
         if "_unparsed" in args:
             return f"Error: the arguments for {tool.name} were not valid JSON, so it was not run. Send them again as one JSON object."
+        def activity(status: str, **more) -> None:
+            if self.events:
+                self.events.publish({
+                    "type": "activity", "tool": tool.name, "args": args, "status": status,
+                    "session_id": ctx.session_id, "call": tool_call.id, **more,
+                })
+
         verdict, reason = decide(tool, args, self.settings)
         if verdict == "ask":
             ctx.emit({"type": "tool", "name": tool.name, "args": args, "status": "asking"})
+            activity("asking", reason=reason)
             if not await ctx.confirm(tool, args, reason):
+                activity("declined")
                 return "The owner declined to let this run. Do not try it again. Tell them what you wanted to do."
         ctx.emit({"type": "tool", "name": tool.name, "args": args, "status": "running"})
+        activity("running")
         started = time.monotonic()
         try:
             output = str(await tool.handler(args, ctx))
             ok = not output.startswith("Error:")
+        except asyncio.CancelledError:
+            activity("stopped")
+            raise
         except Exception as e:  # a broken tool must never take the conversation down
             output, ok = f"Error: the tool crashed ({type(e).__name__}: {e})", False
         self.memory.record_tool(tool.name, ok, (time.monotonic() - started) * 1000)
@@ -232,4 +258,5 @@ class Agent:
         if len(output) > limit:
             output = output[:limit] + f"\n... (cut, {len(output) - limit} more characters)"
         ctx.emit({"type": "tool_result", "name": tool.name, "ok": ok, "preview": output[:200]})
+        activity("done" if ok else "failed", preview=output[:400], ms=round((time.monotonic() - started) * 1000))
         return output

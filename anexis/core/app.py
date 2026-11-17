@@ -9,6 +9,7 @@ from anexis.coder.fallback import FallbackCoder
 from anexis.coder.task import make_code_tool
 from anexis.config import Settings
 from anexis.core.agent import Agent
+from anexis.core.events import EventBus
 from anexis.llm.router import Router
 from anexis.memory.consolidate import consolidate
 from anexis.memory.learn import Learner
@@ -24,6 +25,7 @@ class AnexisApp:
         settings.home.mkdir(parents=True, exist_ok=True)
         settings.workspace.mkdir(parents=True, exist_ok=True)
         self.memory = Memory(settings.db_path)
+        self.events = EventBus()
         self.router = router or Router(settings)
         self.registry = Registry()
         register_builtin(self.registry)
@@ -32,7 +34,7 @@ class AnexisApp:
         self.registry.add(make_code_tool(self.claude, self.fallback))
         self.mcp = MCPManager(settings, self.registry)
         self.learner = Learner(self.memory, self.router)
-        self.agent = Agent(settings, self.memory, self.router, self.registry, self.learner)
+        self.agent = Agent(settings, self.memory, self.router, self.registry, self.learner, self.events)
         self._voice = None
         self._tasks: list[asyncio.Task] = []
 

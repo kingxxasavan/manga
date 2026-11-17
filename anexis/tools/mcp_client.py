@@ -21,6 +21,7 @@ from mcp.client.stdio import get_default_environment
 from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
 
 from anexis.config import Settings
+from anexis.platform import bundled_runtime
 from anexis.tools.base import DANGER, SAFE, WRITE, Tool, ToolContext
 from anexis.tools.registry import Registry
 
@@ -93,9 +94,16 @@ def node_dir() -> Path:
 
 
 def tool_path() -> str:
-    """PATH for tool servers, with the installer's Node first when it exists."""
-    current = os.environ.get("PATH", "")
-    return f"{node_dir()}:{current}" if node_dir().is_dir() else current
+    """PATH for tool servers. The runtime the Windows installer ships comes
+    first, then the Node that setup.sh installed, then whatever is on PATH."""
+    parts = []
+    runtime = bundled_runtime()
+    if runtime:
+        parts += [str(p) for p in (runtime / "node", runtime / "python", runtime / "python" / "Scripts", runtime) if p.is_dir()]
+    if node_dir().is_dir():
+        parts.append(str(node_dir()))
+    parts.append(os.environ.get("PATH", ""))
+    return os.pathsep.join(p for p in parts if p)
 
 
 def launch_command(spec: ServerSpec, settings: Settings) -> list[str]:
@@ -104,7 +112,7 @@ def launch_command(spec: ServerSpec, settings: Settings) -> list[str]:
         npx = shutil.which("npx", path=tool_path()) or "npx"
         return [npx, "-y", f"{spec.package}@{spec.version}", *args]
     if spec.type == "pypi":
-        return ["uvx", "--from", f"{spec.package}=={spec.version}", spec.bin or spec.package, *args]
+        return [shutil.which("uvx", path=tool_path()) or "uvx", "--from", f"{spec.package}=={spec.version}", spec.bin or spec.package, *args]
     return [_fill(str(c), settings) for c in spec.command] + args
 
 

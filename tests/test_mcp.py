@@ -45,7 +45,8 @@ def test_manifest_builds_pinned_launch_commands(settings):
     fs, git, word = load_manifest(settings)
     npx, *rest = launch_command(fs, settings)
     assert Path(npx).name == "npx" and rest == ["-y", "@scope/server-fs@2.3.0", str(settings.workspace)]
-    assert launch_command(git, settings) == ["uvx", "--from", "mcp-server-git==2026.11.11", "mcp-server-git"]
+    uvx, *rest = launch_command(git, settings)
+    assert Path(uvx).stem == "uvx" and rest == ["--from", "mcp-server-git==2026.11.11", "mcp-server-git"]
     assert launch_command(word, settings)[-1] == "word_mcp_server"
 
 

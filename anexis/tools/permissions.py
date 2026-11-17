@@ -60,6 +60,8 @@ def decide(tool: Tool, args: dict, settings) -> tuple[str, str]:
     override = settings.permissions.get(tool.name)
     if override in ("allow", "ask"):
         return override, "set in your config"
+    if getattr(settings, "control", "ask") == "full":
+        return "allow", "full control is on"
     if tool.tier == SAFE:
         return "allow", ""
     if tool.tier == DANGER:

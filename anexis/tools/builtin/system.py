@@ -1,13 +1,13 @@
-"""Files, shell and Python on the server."""
+"""Files, shell and Python on the machine Anexis runs on."""
 
 from __future__ import annotations
 
 import asyncio
 import os
-import signal
 import sys
 import tempfile
 
+from anexis.platform import kill_tree, shell_argv, spawn_kwargs
 from anexis.tools.base import DANGER, WRITE, Tool, ToolContext, params, text
 from anexis.tools.permissions import resolve
 
@@ -59,13 +59,12 @@ async def run_process(argv: list[str] | str, cwd, timeout: float, env: dict | No
         stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
-        start_new_session=True,
         env=env,
+        **spawn_kwargs(),
     )
-    if isinstance(argv, str):
-        proc = await asyncio.create_subprocess_shell(argv, **kwargs)
-    else:
-        proc = await asyncio.create_subprocess_exec(*argv, **kwargs)
+    if isinstance(argv, str):  # one line of shell: sh on Linux, PowerShell on Windows
+        argv = shell_argv(argv)
+    proc = await asyncio.create_subprocess_exec(*argv, **kwargs)
     try:
         out, _ = await asyncio.wait_for(proc.communicate(stdin), timeout)
         return proc.returncode, out.decode("utf-8", errors="replace")
@@ -74,10 +73,7 @@ async def run_process(argv: list[str] | str, cwd, timeout: float, env: dict | No
     finally:
         # Timed out, or the owner hung up mid command: nothing is left running.
         if proc.returncode is None:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            kill_tree(proc.pid)
             await asyncio.shield(proc.wait())
 
 
