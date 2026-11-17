@@ -99,16 +99,33 @@ def is_anexis_server(pid: int) -> bool:
 
 
 def stop_process(pid: int, grace: float = 10.0) -> None:
-    """Asks a program to stop, and ends it for real when it does not."""
+    """Asks a program to stop, and ends it for real when it does not. Whatever
+    it started (tool servers, a running command) is ended with it, so nothing
+    is left behind without a parent."""
     try:
         proc = psutil.Process(pid)
+        family = proc.children(recursive=True)
         proc.terminate()
         try:
             proc.wait(grace)
         except psutil.TimeoutExpired:
             kill_tree(pid)
     except psutil.Error:
-        pass
+        return
+    for child in family:
+        try:
+            child.kill()
+        except psutil.Error:
+            pass
+    psutil.wait_procs(family, timeout=5)
+
+
+def find_program(name: str, search_path: str | None = None) -> str:
+    """The full path of a program given by name. On Windows a tool installed
+    by npm is a .cmd file, which only starts when named in full."""
+    if os.path.dirname(name):
+        return name
+    return shutil.which(name, path=search_path) or name
 
 
 def memory_gb() -> float:

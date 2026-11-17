@@ -20,6 +20,7 @@ chat = "qwen3:8b"
 coder = "qwen2.5-coder:7b"
 small = "qwen3:4b"
 embed = "nomic-embed-text"
+# vision = "<a model that can see>"   # lets see_screen look at the screen. No default, on purpose.
 
 [[providers]]
 name = "nvidia"
@@ -40,6 +41,7 @@ consolidate_minutes = 60  # how often the upkeep runs
 [agent]
 max_steps = 8             # tool rounds per reply
 max_tools = 12            # tools offered to the model per turn
+control = "ask"           # "ask": risky tools wait for a yes. "full": every tool runs without asking.
 
 [coder]
 claude_bin = "claude"

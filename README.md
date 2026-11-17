@@ -1,14 +1,109 @@
 # Anexis
 
-A personal AI assistant that lives on your own server. You type to it in a simple
-terminal chat, voice is the backup. It runs on Ollama or Nvidia, remembers what it
+A personal AI assistant that lives on your own machine. On Windows it is a desktop
+app with a control deck. On a Linux server you type to it in a simple terminal
+chat, or open the same deck in a browser. Voice is the backup. It runs on Ollama or Nvidia, remembers what it
 learns about you in a SQL database, carries a big set of tools pulled from GitHub,
 and writes code through Claude, switching to its own coder when Claude usage runs
 out.
 
 Built for one person, for school, work and talking through projects.
 
-## Set it up
+## Windows app
+
+One installer, everything inside: Python, every Python package, Node and uv. No
+scripts and no cloud shell.
+
+**Build the installer** (once, on Windows, needs Node 20 or newer):
+
+```powershell
+cd desktop
+powershell -ExecutionPolicy Bypass -File build.ps1
+```
+
+That makes `desktop\dist\AnexisSetup.exe`. Run it. It installs for your user only,
+no admin, and puts Anexis in the Start menu. `desktop/README.md` has the details.
+
+**First start** opens setup in the app: pick a preset (it marks the one that fits
+your PC), name it, choose the control level, tick what to download (Ollama and
+the models, Claude Code, the tool servers, voice), paste keys. It saves, downloads,
+and restarts itself with the new settings. Setup, Keys, Checkup, About me and App
+stay one click away in the top bar.
+
+### The deck
+
+```
+ ANEXIS  [general]  model ollama  memory 214  tools 180     [FULL CONTROL] [STOP]  setup keys checkup about me app
+ +-----------+---------------------------------------+----------------+
+ | SYSTEM    | CHAT | TERMINAL                       | MEMORY | TOOLS |
+ | cpu, cores|  you   whats using my memory          | search, kinds  |
+ | memory    |  nex   run_shell ...            done  | what it knows  |
+ | gpu, disks|        Chrome, 2.1 GB ...             | forget, add    |
+ | network   +-------------------+-------------------+                |
+ | programs  | FILES             | ACTIVITY          |                |
+ +-----------+-------------------+-------------------+----------------+
+```
+
+| Panel | What it is |
+|---|---|
+| Chat | Talk to it. Tool calls show as they run. Every slash command from the terminal chat works, plus `/control`, `/theme`, `/setup`, `/keys`, `/app`. |
+| Terminal | A real shell on the PC (PowerShell on Windows). |
+| System | CPU, cores, memory, GPU, disks, network and the busiest programs, live. |
+| Memory | What it remembers. Search, filter, add, forget. The memories used for the last reply are marked. |
+| Tools | Tool servers and their state, every tool, what is due soon. |
+| Files | Browse the disk, open things, start a terminal in a folder. |
+| Activity | Every action Anexis takes, as it happens. Click one for its output. |
+
+Four themes (ion, ember, verdant, ultra) in the App screen. On a narrow window it
+shows one panel at a time.
+
+The same deck runs anywhere Anexis does: `anexis ui` opens it in your browser.
+
+### Control of the PC
+
+| Level | What happens |
+|---|---|
+| **Full control** (what setup in the app picks) | Every tool runs without asking: commands, files anywhere, apps, windows, clipboard, screenshots, keyboard and mouse. |
+| **Ask first** (the default on a server) | Reading and searching run. Anything that changes the computer waits for your yes in the chat. |
+
+Switch any time with the pill in the top bar or `/control full` and `/control ask`.
+It takes effect at once and is saved as `control` under `[agent]` in `anexis.toml`.
+A single tool can still be pinned to ask under `[permissions]`.
+
+With full control on, three things keep you in charge: the Activity panel shows
+every action live, STOP (or Esc) ends whatever is running along with every program
+it started, and pushing the mouse into a screen corner stops mouse and keyboard
+control.
+
+The app's server can drive the whole PC, so it is locked: it always runs with a
+token that only the app window has, it only answers requests meant for this
+machine, and it refuses calls from web pages on other sites.
+
+The desktop tools: `open_path` (a file, folder, link or app by name),
+`list_processes`, `end_process`, `list_windows`, `focus_window`, `close_window`,
+`clipboard_read`, `clipboard_write`, `screenshot`, `type_text`, `press_keys`,
+`mouse_move`, `mouse_click`, `mouse_scroll` and `see_screen`. Local chat models
+cannot see pictures, so `see_screen` (and clicking things it finds) needs a vision
+model: add `vision = "<a vision model>"` under a provider's `[providers.models]`.
+Without one Anexis works by windows, keys and the clipboard.
+
+### Change the app without rebuilding it
+
+The installed app runs from a folder of plain files, `%LOCALAPPDATA%\Anexis\app`.
+The App screen shows the path and has an **Edit with Claude** button that opens
+Claude Code in it.
+
+| You edit | What happens |
+|---|---|
+| `ui\` (the deck) | The open window reloads by itself. A stylesheet change shows without even a reload. |
+| `anexis\` (the brain) | The brain restarts in a second or two. A file with a mistake in it is held back and the deck says which line, so a working brain is never replaced by a broken one. |
+| `desktop\frame.js` (the window) | Close the app and open it again. If the edit is broken the built in copy runs and says so. |
+
+A new installer only matters when the bundled Python, Node or packages change.
+When a newer version is installed, your edited folder is moved aside whole to
+`app-backup-<version>-<date>` next to it, never merged over or deleted.
+
+## Set it up on a Linux server
 
 On the server (Linux), clone it and run the setup from that folder:
 
@@ -243,7 +338,8 @@ for more with `find_tools`.
 | Shell, Python, code tasks, browser, anything that sends or deletes | always asks y or n |
 
 If nobody answers within five minutes the answer is no. You can loosen a single
-tool in `anexis.toml` under `[permissions]`.
+tool in `anexis.toml` under `[permissions]`, or turn asking off altogether with
+full control (see Control of the PC above).
 
 Each tool server only receives the environment variables its manifest entry names.
 Your other keys are not shared with it.
@@ -314,12 +410,18 @@ Keys go in `.env` (see `.env.example`), never in `anexis.toml`.
 
 ```bash
 uv sync
-uv run pytest        # 288 tests
+uv sync --extra desktop   # adds screen, keyboard and mouse control
+uv run pytest        # 358 tests
 uv run ruff check anexis tests
 ```
 
 The tests use a scripted stand in for the model and a real SQLite database, a real
-HTTP server, a real MCP test server, and fake `claude` and `piper` programs.
+HTTP server, a real MCP test server, and fake `claude` and `piper` programs. One
+of them (`tests/ui/deck.mjs`) drives the deck in a real browser against a real
+supervised server: setup, chat, a tool call, STOP, ask first, the terminal, files,
+memory, live editing of the deck and the brain, and a phone sized window. It
+needs Node with Playwright and is skipped without it. The window code has its own
+tests: `cd desktop && npm test`.
 
 ### What was and was not checked on the build machine
 
@@ -327,6 +429,23 @@ Checked: the whole test suite, plus a real run of `anexis serve`, `anexis ask`,
 `anexis doctor`, `anexis aboutme` and the interactive chat against a stand in model
 server speaking the same API as Ollama. One real Claude Code run through Anexis's
 own runner (it wrote and ran a file). `anexis train --offline`, 32 of 32.
+
+For the desktop app, checked: the deck in a real browser (above), the supervisor
+restarting a real brain, the real app window started on Linux under a virtual
+display (it started the brain and showed the deck), the bundled Python steps of
+`build.ps1` with their Linux twins (a standalone Python with the packages
+installed into it runs Anexis after its folder is moved), and packing the Windows
+app folder with electron builder.
+
+Not run, because the build machine is Linux. These were written against how
+Windows documents them, so expect to shake a few out on the first real run:
+
+1. `build.ps1` itself and the last step that makes `AnexisSetup.exe`.
+2. Anything on real Windows: the installed app, PowerShell as the shell tool, the
+   ConPTY terminal (`pywinpty`), window control (`pygetwindow`), the real keyboard
+   and mouse (`pyautogui`), opening apps by name.
+3. Installing Ollama from setup in the app, and Claude Code on Windows.
+4. `see_screen` with a real vision model, and the microphone button.
 
 Not checked there, so check with `anexis doctor` on your server:
 
@@ -355,9 +474,13 @@ anexis/tools/           registry, picker, permissions, built ins, MCP client
 anexis/coder/           Claude runner, limit detection, fallback coder
 anexis/voice/           speech in and out
 anexis/profile/         About Me
-anexis/server/          HTTP API
+anexis/server/          HTTP API, the lock on it, the deck's files
+anexis/desktop/         what the desktop adds: routes, terminal, setup, supervisor
+anexis/platform.py      the few places Windows and Linux differ
 anexis/cli/             the chat screen and the anexis command
 anexis/mcp_server.py    read only memory server for Claude Code
+ui/                   the deck: plain HTML, CSS and JS, no build step
+desktop/              the app window (Electron) and the installer build
 tools/manifest.yaml   the outside tools, pinned
 training/like_me.yaml the training pack
 docs/                 the design

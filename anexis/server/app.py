@@ -44,7 +44,7 @@ class LocalOnly:
     async def __call__(self, scope, receive, send):
         if scope["type"] in ("http", "websocket") and self.settings.host in LOOPBACK:
             headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope.get("headers", [])}
-            names = [headers.get("host", "")] + ([headers["origin"]] if headers.get("origin") not in (None, "null") else [])
+            names = [headers.get("host", "")] + ([headers["origin"]] if "origin" in headers else [])
             if any(_hostname(name) not in LOCAL_NAMES for name in names):
                 if scope["type"] == "websocket":
                     await send({"type": "websocket.close", "code": 4403})

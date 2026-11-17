@@ -19,3 +19,8 @@ profile/about_me.yaml
 *.db-shm
 
 .DS_Store
+
+# desktop app build
+node_modules/
+desktop/stage/
+desktop/dist/

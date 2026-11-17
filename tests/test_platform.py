@@ -67,3 +67,24 @@ def test_tool_path_puts_the_bundled_runtime_first(tmp_path, monkeypatch):
     (tmp_path / "node").mkdir()
     monkeypatch.setenv("ANEXIS_RUNTIME", str(tmp_path))
     assert mcp_client.tool_path().split(platform.os.pathsep)[0] == str(tmp_path / "node")
+
+
+def test_stopping_a_program_ends_what_it_started_too():
+    parent = subprocess.Popen([sys.executable, "-c", PARENT], stdout=subprocess.PIPE)
+    child_pid = int(parent.stdout.readline())
+    platform.stop_process(parent.pid, grace=5)
+    parent.wait(5)
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and platform.is_running(child_pid):
+        time.sleep(0.05)
+    assert not platform.is_running(child_pid)
+
+
+def test_a_program_is_found_by_name_and_a_path_is_left_alone(tmp_path):
+    assert platform.find_program(sys.executable) == sys.executable
+    assert platform.os.path.isabs(platform.find_program("python3" if not platform.IS_WINDOWS else "python"))
+    assert platform.find_program("no-such-program-xyz") == "no-such-program-xyz"
+    tool = tmp_path / "mytool"
+    tool.write_text("#!/bin/sh\n")
+    tool.chmod(0o755)
+    assert platform.find_program("mytool", str(tmp_path)) == str(tool)

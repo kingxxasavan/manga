@@ -7,7 +7,7 @@ import os
 import sys
 import tempfile
 
-from anexis.platform import kill_tree, shell_argv, spawn_kwargs
+from anexis.platform import find_program, kill_tree, shell_argv, spawn_kwargs
 from anexis.tools.base import DANGER, WRITE, Tool, ToolContext, params, text
 from anexis.tools.permissions import resolve
 
@@ -64,6 +64,10 @@ async def run_process(argv: list[str] | str, cwd, timeout: float, env: dict | No
     )
     if isinstance(argv, str):  # one line of shell: sh on Linux, PowerShell on Windows
         argv = shell_argv(argv)
+    else:
+        from anexis.tools.mcp_client import tool_path
+
+        argv = [find_program(str(argv[0]), tool_path()), *argv[1:]]
     proc = await asyncio.create_subprocess_exec(*argv, **kwargs)
     try:
         out, _ = await asyncio.wait_for(proc.communicate(stdin), timeout)

@@ -195,6 +195,6 @@ def open_terminal(cwd: str | Path, cols: int = 100, rows: int = 30, argv: list[s
         try:
             kind = WindowsTerminal if IS_WINDOWS else PosixTerminal
             return kind(argv, folder, cols, rows, env)
-        except (ImportError, OSError):
+        except Exception:  # no terminal device to be had here: plain pipes still work
             pass
     return PipeTerminal(argv, folder, cols, rows, env)

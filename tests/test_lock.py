@@ -19,6 +19,7 @@ async def test_a_request_meant_for_another_name_is_refused(live):
 async def test_a_page_from_another_site_cannot_call_in(live):
     _, client = await live()
     assert (await get(client, "/health", Origin="https://evil.example")).status_code == 403
+    assert (await get(client, "/health", Origin="null")).status_code == 403  # a sandboxed frame
     assert (await get(client, "/health", Origin=client.url)).status_code == 200
 
 

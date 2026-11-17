@@ -155,3 +155,33 @@ def test_stopping_the_supervisor_ends_the_brain(running):
     r.stop()
     assert not platform.is_running(pid)
     assert not os.path.exists(r.sup.settings.home / "server.pid")
+
+
+def test_being_told_to_end_takes_the_brain_along(tmp_path, monkeypatch):
+    """`anexis desktop` killed with SIGTERM must not leave a brain running."""
+    import signal
+    import subprocess
+
+    from anexis import platform
+
+    port = free_port()
+    env = {**os.environ, "ANEXIS_HOME": str(tmp_path / "home"), "ANEXIS_WORKSPACE": str(tmp_path / "ws"),
+           "ANEXIS_PORT": str(port), "ANEXIS_OUTSIDE_TOOLS": "0"}
+    proc = subprocess.Popen([sys.executable, "-m", "anexis", "desktop"], env=env, stdout=subprocess.PIPE, text=True)
+    try:
+        ready = ""
+        while not ready.startswith("ANEXIS_READY"):
+            ready = proc.stdout.readline()
+            assert ready, "the supervisor ended before the brain was up"
+        token = json.loads(ready.split(" ", 1)[1])["token"]
+        assert len(token) >= 32  # the desktop always makes itself a token
+        pid = int((tmp_path / "home" / "server.pid").read_text())
+        assert platform.is_running(pid)
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(30)
+        deadline = time.monotonic() + 10
+        while platform.is_running(pid) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not platform.is_running(pid)
+    finally:
+        proc.kill()

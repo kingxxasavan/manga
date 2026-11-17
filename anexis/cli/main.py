@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -155,6 +156,14 @@ def cmd_desktop(settings: Settings, args) -> None:
         else:
             console.print(f"[dim] {rest}[/dim]", highlight=False, markup=False)
 
+    def leave(*_):
+        raise KeyboardInterrupt  # the supervisor stops the brain on its way out
+
+    # Being told to end (a logout, a `kill`) must take the brain along, the
+    # same as Ctrl+C does. Without this the brain would be left running alone.
+    for name in ("SIGTERM", "SIGBREAK"):
+        if hasattr(signal, name):
+            signal.signal(getattr(signal, name), leave)
     sys.exit(Supervisor(settings, say).run())
 
 
