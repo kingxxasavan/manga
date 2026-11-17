@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from greg.tools.base import DANGER, SAFE, WRITE, ToolContext
-from greg.tools.mcp_client import MCPManager, launch_command, load_manifest
-from greg.tools.registry import Registry
+from anexis.tools.base import DANGER, SAFE, WRITE, ToolContext
+from anexis.tools.mcp_client import MCPManager, launch_command, load_manifest
+from anexis.tools.registry import Registry
 
 SERVER = str(Path(__file__).parent / "mcp_echo_server.py")
 
@@ -43,7 +43,8 @@ def test_manifest_builds_pinned_launch_commands(settings):
   - {name: word, type: pypi, package: office-word-mcp-server, version: "1.1.11", bin: word_mcp_server}
 """)
     fs, git, word = load_manifest(settings)
-    assert launch_command(fs, settings) == ["npx", "-y", "@scope/server-fs@2.3.0", str(settings.workspace)]
+    npx, *rest = launch_command(fs, settings)
+    assert Path(npx).name == "npx" and rest == ["-y", "@scope/server-fs@2.3.0", str(settings.workspace)]
     assert launch_command(git, settings) == ["uvx", "--from", "mcp-server-git==2026.11.11", "mcp-server-git"]
     assert launch_command(word, settings)[-1] == "word_mcp_server"
 
@@ -67,7 +68,7 @@ def test_a_server_switched_off_stays_off_even_with_its_key(settings):
 
 
 def test_the_repo_manifest_is_valid_and_every_entry_names_its_source(settings):
-    from greg.config import Settings
+    from anexis.config import Settings
 
     specs = load_manifest(Settings(home=settings.home))
     assert len(specs) >= 20
@@ -123,3 +124,33 @@ async def test_stopping_removes_the_tools(settings):
     await manager.start()
     await manager.stop()
     assert registry.get("echo_echo") is None
+
+
+def test_tool_servers_prefer_the_node_the_installer_put_in_the_home_folder(settings, tmp_path, monkeypatch):
+    from anexis.tools.mcp_client import _server_env, node_dir
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    manifest(settings, "servers:\n  - {name: fs, type: npm, package: p, version: '1'}\n")
+    spec = load_manifest(settings)[0]
+    assert str(node_dir()) not in _server_env(spec, settings)["PATH"]  # not there yet
+    node_dir().mkdir(parents=True)
+    (node_dir() / "npx").write_text("#!/bin/sh\n")
+    (node_dir() / "npx").chmod(0o755)
+    assert _server_env(spec, settings)["PATH"].startswith(str(node_dir()) + ":")
+    assert launch_command(spec, settings)[0] == str(node_dir() / "npx")
+
+
+async def test_with_outside_tools_off_no_tool_server_is_started(settings):
+    import asyncio
+
+    from anexis.core.app import AnexisApp
+    from tests.fakes import FakeRouter
+
+    manifest(settings, "servers:\n" + echo_entry())
+    settings.outside_tools = False
+    settings.consolidate_minutes = 0
+    anexis = AnexisApp(settings, router=FakeRouter())
+    await anexis.start()
+    await asyncio.sleep(0.3)
+    assert anexis.mcp.status == {} and anexis.registry.get("echo_echo") is None
+    await anexis.stop()

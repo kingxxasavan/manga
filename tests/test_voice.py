@@ -3,7 +3,7 @@ import wave
 from pathlib import Path
 from types import SimpleNamespace
 
-from greg.voice import Voice, speakable
+from anexis.voice import Voice, speakable
 
 FAKE_PIPER = str(Path(__file__).parent / "fake_piper.py")
 
@@ -50,7 +50,7 @@ def test_the_speech_model_is_loaded_once(settings):
 
 
 def test_hearing_is_reported_unavailable_with_the_fix_when_whisper_is_missing(settings, monkeypatch):
-    monkeypatch.setattr("greg.voice.find_spec", lambda name: None)
+    monkeypatch.setattr("anexis.voice.find_spec", lambda name: None)
     ok, why = Voice(settings).can_hear()
     assert not ok and "uv sync --extra voice" in why
 
@@ -85,3 +85,37 @@ def test_speakable_strips_markup_code_and_links():
 
 def test_speakable_keeps_long_replies_short():
     assert len(speakable("word " * 2000)) <= 1300
+
+
+def test_a_missing_audio_library_is_named_with_the_command_that_fixes_it(monkeypatch):
+    import builtins
+
+    from anexis.cli.audio import audio_ready
+
+    real_import = builtins.__import__
+
+    def no_portaudio(name, *args, **kw):
+        if name == "sounddevice":
+            raise OSError("PortAudio library not found")
+        return real_import(name, *args, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", no_portaudio)
+    ok, why = audio_ready()
+    assert not ok and "libportaudio2" in why
+
+
+def test_no_voice_packages_at_all_points_at_the_installer(monkeypatch):
+    import builtins
+
+    from anexis.cli.audio import audio_ready
+
+    real_import = builtins.__import__
+
+    def missing(name, *args, **kw):
+        if name == "sounddevice":
+            raise ModuleNotFoundError("No module named 'sounddevice'")
+        return real_import(name, *args, **kw)
+
+    monkeypatch.setattr(builtins, "__import__", missing)
+    ok, why = audio_ready()
+    assert not ok and "setup.sh" in why

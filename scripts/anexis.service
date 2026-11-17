@@ -1,0 +1,22 @@
+# Keeps Anexis running in the background and across reboots, as your own user.
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp scripts/anexis.service ~/.config/systemd/user/
+#   systemctl --user enable --now anexis
+#   loginctl enable-linger "$USER"     # keep it running when you log out
+#
+# Logs: journalctl --user -u anexis -f
+
+[Unit]
+Description=Anexis personal assistant
+After=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/anexis serve
+Restart=on-failure
+RestartSec=5
+# Ollama and the tool servers are found through your normal PATH.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

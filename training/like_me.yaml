@@ -1,8 +1,8 @@
-# Training pack: Greg gets talked to the way its owner talks, then is checked.
+# Training pack: Anexis gets talked to the way its owner talks, then is checked.
 #
-#   greg train             practice run on a throwaway memory, with your real model
-#   greg train --keep      same teaching, written to Greg's real memory
-#   greg train --offline   no model needed. Checks storage, recall, typos and
+#   anexis train             practice run on a throwaway memory, with your real model
+#   anexis train --keep      same teaching, written to Anexis's real memory
+#   anexis train --offline   no model needed. Checks storage, recall, typos and
 #                          tool picking, not the model's own judgment.
 #
 # teach     things the owner really said they want. Safe to keep.

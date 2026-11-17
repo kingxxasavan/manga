@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from greg.coder.claude import ClaudeRunner, parse_reset
-from greg.coder.fallback import FallbackCoder
-from greg.coder.task import make_code_tool, project_dir
-from greg.tools.base import DANGER, ToolContext
-from greg.tools.builtin import register_builtin
-from greg.tools.registry import Registry
+from anexis.coder.claude import ClaudeRunner, parse_reset
+from anexis.coder.fallback import FallbackCoder
+from anexis.coder.task import make_code_tool, project_dir
+from anexis.tools.base import DANGER, ToolContext
+from anexis.tools.builtin import register_builtin
+from anexis.tools.registry import Registry
 from tests.fakes import FakeRouter, call
 
 FAKE = str(Path(__file__).parent / "fake_claude.py")
@@ -116,14 +116,14 @@ async def test_fallback_writes_files_runs_them_and_reports(settings, memory):
     project.mkdir(parents=True)
     coder, router = fallback(
         settings, memory,
-        call("write_file", path="hello.py", content="print('hi from greg')"),
+        call("write_file", path="hello.py", content="print('hi from anexis')"),
         call("run", command="python3 hello.py"),
         "Made hello.py and ran it.",
     )
     result = await coder.run("make a hello script", project)
     assert result.ok and result.text == "Made hello.py and ran it."
-    assert (project / "hello.py").read_text() == "print('hi from greg')"
-    assert "hi from greg" in router.calls[2]["messages"][-1]["content"]  # it saw the program's output
+    assert (project / "hello.py").read_text() == "print('hi from anexis')"
+    assert "hi from anexis" in router.calls[2]["messages"][-1]["content"]  # it saw the program's output
     assert result.files == ["hello.py"]
 
 
@@ -133,11 +133,11 @@ async def test_fallback_cannot_write_outside_the_project(settings, memory):
     coder, router = fallback(
         settings, memory,
         call("write_file", path="../escape.txt", content="x"),
-        call("write_file", path="/tmp/greg_escape_test.txt", content="x"),
+        call("write_file", path="/tmp/anexis_escape_test.txt", content="x"),
         "done",
     )
     await coder.run("escape", project)
-    assert not (settings.workspace / "escape.txt").exists() and not Path("/tmp/greg_escape_test.txt").exists()
+    assert not (settings.workspace / "escape.txt").exists() and not Path("/tmp/anexis_escape_test.txt").exists()
     assert "outside the project" in router.calls[1]["messages"][-1]["content"]
 
 
@@ -187,7 +187,7 @@ async def test_code_task_asks_first_and_says_claude_wrote_it(claude, settings, m
     assert "Written by: Claude Code" in out and (settings.workspace / "hello-app" / "hello.py").exists()
 
 
-async def test_when_claude_is_out_of_usage_greg_writes_it_and_says_so(claude, settings, memory):
+async def test_when_claude_is_out_of_usage_anexis_writes_it_and_says_so(claude, settings, memory):
     claude.mode("limit_exit1")
     tool, ctx = code_tool(
         settings, memory, claude,
@@ -195,7 +195,7 @@ async def test_when_claude_is_out_of_usage_greg_writes_it_and_says_so(claude, se
         call("write_file", path="two.py", content="print(2)"), "Wrote two.py.",
     )
     out = await tool.handler({"project": "demo", "task": "make a hello script"}, ctx)
-    assert "Written by: Greg" in out and "usage" in out and "Claude Code" not in out.split("\n")[0]
+    assert "Written by: Anexis" in out and "usage" in out and "Claude Code" not in out.split("\n")[0]
     assert (settings.workspace / "demo" / "hello.py").exists()
     # While Claude rests it is not even started again.
     await tool.handler({"project": "demo", "task": "another"}, ctx)

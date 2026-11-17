@@ -2,7 +2,7 @@ import io
 
 from rich.console import Console
 
-from greg.cli.repl import ChatSession, header, interview, parse_command, short_args
+from anexis.cli.repl import ChatSession, header, interview, parse_command, short_args
 from tests.fakes import call
 
 
@@ -15,8 +15,8 @@ def test_plain_text_is_a_message_and_slash_words_are_commands():
 
 
 def test_header_shows_model_memory_tools_and_mode():
-    line = header({"name": "Greg", "providers": ["ollama", "nvidia"], "memories": 214, "tools": 162, "tools_offered": 12}, "school")
-    for piece in ("greg", "ollama", "memory 214", "tools 162", "mode school"):
+    line = header({"name": "Anexis", "providers": ["ollama", "nvidia"], "memories": 214, "tools": 162, "tools_offered": 12}, "school")
+    for piece in ("anexis", "ollama", "memory 214", "tools 162", "mode school"):
         assert piece in line
 
 
@@ -26,7 +26,7 @@ def test_long_tool_arguments_are_shortened_for_the_screen():
 
 
 async def test_interview_keeps_old_answers_on_enter_clears_on_dash_and_splits_lists():
-    from greg.profile.about import BY_KEY
+    from anexis.profile.about import BY_KEY
 
     answers = {"name": "", "age": "20", "classes": "Chem 101; Calc 2", "habits": "-", "work": ""}
     shown = {}
@@ -76,12 +76,12 @@ async def test_answering_no_keeps_the_tool_from_running(live, settings):
 
 
 async def test_the_session_continues_across_messages(live):
-    greg, client = await live("one", "two")
+    anexis, client = await live("one", "two")
     chat, _ = session(client)
     await chat.send("first")
     first = chat.session_id
     await chat.send("second")
-    assert chat.session_id == first and len(greg.memory.history(first)) == 4
+    assert chat.session_id == first and len(anexis.memory.history(first)) == 4
 
 
 async def test_a_model_outage_is_shown_as_an_error_not_a_crash(live):
@@ -92,13 +92,13 @@ async def test_a_model_outage_is_shown_as_an_error_not_a_crash(live):
 
 
 async def test_memory_commands_work_from_the_chat(live):
-    greg, client = await live()
+    anexis, client = await live()
     chat, out = session(client)
     await chat.command("remember", "Locker code is 4412")
     await chat.command("memory", "locker")
     assert "4412" in out.getvalue()
-    await chat.command("forget", str(greg.memory.list()[0].id))
-    assert greg.memory.count() == 0
+    await chat.command("forget", str(anexis.memory.list()[0].id))
+    assert anexis.memory.count() == 0
 
 
 async def test_mode_command_changes_the_mode_and_rejects_unknown_ones(live):

@@ -1,11 +1,11 @@
 
 import numpy as np
 
-from greg.core.agent import Agent
-from greg.memory.learn import Learner
-from greg.tools.base import Tool
-from greg.tools.builtin import register_builtin
-from greg.tools.registry import Registry
+from anexis.core.agent import Agent
+from anexis.memory.learn import Learner
+from anexis.tools.base import Tool
+from anexis.tools.builtin import register_builtin
+from anexis.tools.registry import Registry
 from tests.fakes import FakeRouter, call
 
 
