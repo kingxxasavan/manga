@@ -40,7 +40,7 @@ async def doctor(anexis) -> list[dict]:
             out.append(check(name, False, provider.get("error", "not reachable"), fix))
         elif provider["missing"]:
             pull = " && ".join(f"ollama pull {m}" for m in provider["missing"])
-            fix = pull if provider["name"] == "ollama" else "pick models this provider has, in anexis.toml"
+            fix = pull if provider["name"] == "ollama" else "these were retired or renamed. Pick ones this provider has now: Models in the app, or anexis.toml"
             out.append(check(name, False, "missing models: " + ", ".join(provider["missing"]), fix))
         else:
             out.append(check(name, True, ", ".join(f"{r}={m}" for r, m in provider["models"].items()) or "reachable"))
@@ -54,7 +54,7 @@ async def doctor(anexis) -> list[dict]:
 
     out.append(check("memory", True, f"{anexis.memory.count()} memories in {settings.db_path}"))
     pinned = len(anexis.memory.pinned())
-    out.append(check("about me", pinned > 0, f"{pinned} things known about you", "run `anexis aboutme`"))
+    out.append(check("about me", pinned > 0, f"{pinned} things known about you", "open About me in the app, or run `anexis aboutme`", optional=True))
 
     claude = await _version(settings.claude_bin)
     usable, why = anexis.claude.available()
@@ -63,7 +63,15 @@ async def doctor(anexis) -> list[dict]:
     elif not usable:
         out.append(check("claude code", False, why, "nothing to do, it comes back by itself", optional=True))
     else:
-        out.append(check("claude code", True, f"{claude}. Login is checked the first time it codes."))
+        auth = await anexis.claude.auth()
+        how = {"claude.ai": "your Claude plan", "oauth_token": "your Claude plan", "api_key": "an API key"}.get(auth["method"], auth["method"])
+        if auth["signed_in"]:
+            reading = await anexis.claude.usage() if auth.get("plan") else None
+            used = f", plan {reading['percent']:.0f}% used" if reading else ""
+            out.append(check("claude code", True, f"{claude}, signed in with {how}{used}"))
+        else:
+            out.append(check("claude code", False, f"{claude}, not signed in",
+                             "sign in with your Claude plan: Keys in the app, or `claude auth login` in a terminal. Code tasks use Anexis's own coder until then.", optional=True))
 
     node = await _version("node", tool_path())
     major = int(re.search(r"v?(\d+)", node).group(1)) if node and re.search(r"v?(\d+)", node) else 0

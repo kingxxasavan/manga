@@ -40,7 +40,8 @@ def make_code_tool(claude: ClaudeRunner, fallback: FallbackCoder) -> Tool:
             ctx.emit({"type": "status", "text": "Claude is coding..."})
             result = await claude.run(task, project, guidance)
             if result.ok:
-                return f"Written by: Claude Code\nProject folder: {project}\n\n{result.text}"
+                which = f" ({result.note})" if result.note else ""
+                return f"Written by: Claude Code{which}\nProject folder: {project}\n\n{result.text}"
             if result.limited:
                 until = time.strftime("%H:%M", time.localtime(result.reset_at))
                 why_not = f"Claude is out of usage until {until}"

@@ -155,3 +155,67 @@ async def test_with_outside_tools_off_no_tool_server_is_started(settings):
     await asyncio.sleep(0.3)
     assert anexis.mcp.status == {} and anexis.registry.get("echo_echo") is None
     await anexis.stop()
+
+
+# ---- a server that will not start: say why, and try once more ----
+
+FLAKY = '''
+import os, sys
+marker = sys.argv[1]
+if not os.path.exists(marker):
+    open(marker, "w").write("1")
+    print("npm error EBUSY: resource busy or locked", file=sys.stderr)
+    sys.exit(1)
+os.execv(sys.executable, [sys.executable, sys.argv[2]])
+'''
+
+
+async def test_a_server_that_dies_on_start_reports_what_it_said(settings, tmp_path):
+    script = tmp_path / "dead.py"
+    script.write_text("import sys; print('Error: Cannot find module left-pad', file=sys.stderr); sys.exit(1)")
+    manifest(settings, f"servers:\n  - name: dead\n    type: command\n    command: ['{sys.executable}', '{script}']\n")
+    manager = MCPManager(settings, Registry(), start_timeout=20)
+    await manager.start()
+    info = manager.status["dead"]
+    assert info["state"] == "failed" and info["retried"] is True
+    assert "Cannot find module left-pad" in info["error"] and "Cannot find module left-pad" in info["log"]
+    assert (settings.home / "tool-logs" / "dead.log").is_file()
+    await manager.stop()
+
+
+async def test_a_server_that_fails_its_first_start_gets_a_second_one(settings, tmp_path):
+    script = tmp_path / "flaky.py"
+    script.write_text(FLAKY)
+    manifest(settings, f"servers:\n  - name: flaky\n    type: command\n"
+                       f"    command: ['{sys.executable}', '{script}', '{tmp_path / 'marker'}', '{SERVER}']\n")
+    registry = Registry()
+    manager = MCPManager(settings, registry, start_timeout=30)
+    await manager.start()
+    info = manager.status["flaky"]
+    assert info["state"] == "running" and info["tools"] >= 3 and info["error"] == "" and "log" not in info
+    assert registry.get("flaky_echo") is not None
+    await manager.stop()
+
+
+async def test_npx_servers_start_one_after_another(settings, tmp_path, monkeypatch):
+    """Two npx downloads at once fight over the npm cache on Windows."""
+    from anexis.tools import mcp_client
+
+    stamp = tmp_path / "stamps"
+    slow = tmp_path / "slow.py"
+    slow.write_text(
+        "import os, sys, time\n"
+        f"open(r'{stamp}', 'a').write('start\\n')\n"
+        "time.sleep(0.6)\n"
+        f"open(r'{stamp}', 'a').write('ready\\n')\n"
+        f"os.execv(sys.executable, [sys.executable, r'{SERVER}'])\n"
+    )
+    monkeypatch.setattr(mcp_client, "launch_command", lambda spec, settings: [sys.executable, str(slow)])
+    manifest(settings, "servers:\n"
+                       "  - {name: one, type: npm, package: a, version: '1'}\n"
+                       "  - {name: two, type: npm, package: b, version: '1'}\n")
+    manager = MCPManager(settings, Registry(), start_timeout=30)
+    await manager.start()
+    assert {manager.status[n]["state"] for n in ("one", "two")} == {"running"}
+    assert stamp.read_text().split() == ["start", "ready", "start", "ready"]  # never start, start
+    await manager.stop()

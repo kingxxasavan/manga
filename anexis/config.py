@@ -95,7 +95,11 @@ class Settings:
     permissions: dict[str, str] = field(default_factory=dict)
 
     claude_bin: str = "claude"
-    claude_model: str = ""
+    claude_model: str = ""          # empty means Claude Code's own default, its best model
+    # When the Claude plan's usage reaches this percent, code tasks move to the
+    # model below to stretch what is left. 0 turns the switch off.
+    claude_switch_percent: int = 85
+    claude_switch_model: str = "opus"
     claude_timeout: float = 1800.0
     claude_backoff_minutes: int = 30
     fallback_rounds: int = 12

@@ -221,3 +221,72 @@ def test_project_names_become_safe_folder_names(settings):
     assert project_dir(settings, "My Cool App!").name == "my-cool-app"
     for nasty in ("../../etc", "/etc/passwd", "..", ""):
         assert project_dir(settings, nasty).parent == settings.workspace
+
+
+# ---- the Claude plan: how it is signed in, how full it is, when to switch ----
+
+async def test_a_nearly_used_plan_moves_code_tasks_to_the_cheaper_model(claude, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "87")
+    result = await runner.run("write hello", tmp_path)
+    assert result.ok and result.model == "opus"
+    assert "87% used" in result.note and "opus" in result.note
+    argv = json.loads((tmp_path / "claude.log").read_text().splitlines()[-1])["argv"]
+    assert argv[argv.index("--model") + 1] == "opus"
+
+
+async def test_below_the_line_claude_keeps_its_usual_model(claude, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "84.9")
+    result = await runner.run("write hello", tmp_path)
+    assert result.ok and result.model == "" and result.note == ""
+    assert "--model" not in json.loads((tmp_path / "claude.log").read_text().splitlines()[-1])["argv"]
+
+
+async def test_the_line_and_the_cheaper_model_come_from_settings(claude, settings, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    settings.claude_model, settings.claude_switch_percent, settings.claude_switch_model = "fable", 50, "sonnet"
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "40")
+    assert await runner.pick_model() == ("fable", "")
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "60")
+    assert (await runner.usage(fresh=True))["percent"] == 60
+    assert (await runner.pick_model())[0] == "sonnet"
+    settings.claude_switch_percent = 0  # switched off
+    assert await runner.pick_model() == ("fable", "")
+
+
+async def test_usage_ignores_a_meter_for_one_single_model_and_is_remembered_briefly(claude, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "30")
+    reading = await runner.usage()
+    assert reading["percent"] == 30 and {r["kind"] for r in reading["rows"]} == {"session", "weekly_all"}
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "95")
+    assert (await runner.usage())["percent"] == 30       # still the remembered reading
+    assert (await runner.usage(fresh=True))["percent"] == 95
+
+
+async def test_no_usage_report_means_no_switch(claude, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.delenv("FAKE_CLAUDE_USAGE", raising=False)  # an API key, or an older Claude Code
+    assert await runner.usage() is None
+    assert await runner.pick_model() == ("", "")
+    assert (await runner.run("write hello", tmp_path)).ok
+
+
+async def test_sign_in_state_is_read_from_claude_itself(claude, settings, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    signed = await runner.auth()
+    assert signed["signed_in"] and signed["plan"] and signed["method"] == "claude.ai" and signed["subscription"] == "pro"
+    monkeypatch.setenv("FAKE_CLAUDE_AUTH", "none")
+    assert (await runner.auth())["signed_in"] is False
+    monkeypatch.setenv("FAKE_CLAUDE_AUTH", "api_key")
+    key = await runner.auth()
+    assert key["signed_in"] and key["plan"] is False
+    settings.claude_bin = "/nonexistent/claude"
+    assert (await runner.auth()) == {"installed": False, "signed_in": False, "method": "none"}

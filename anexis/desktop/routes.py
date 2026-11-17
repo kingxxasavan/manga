@@ -20,6 +20,7 @@ from anexis.config import REPO_ROOT, find_config, read_dotenv
 from anexis.core.agent import MODES
 from anexis.desktop import files as browser
 from anexis.desktop import install as installer
+from anexis.desktop import models as model_picker
 from anexis.desktop import system
 from anexis.desktop.config_file import set_values
 from anexis.desktop.terminal import open_terminal
@@ -172,7 +173,9 @@ def attach(app, anexis) -> None:
             ],
             "keys": [
                 {"env": o.env, "title": o.title, "label": o.label, "turns_on": o.turns_on, "get_it": o.get_it,
-                 "set": bool(env.get(o.env)), "ends": env[o.env][-4:] if len(env.get(o.env, "")) >= 12 else ""}
+                 "secret": o.secret, "set": bool(env.get(o.env)),
+                 # an address is shown whole, a key only by its last four characters
+                 "ends": (env.get(o.env, "") if not o.secret else env[o.env][-4:] if len(env.get(o.env, "")) >= 12 else "")}
                 for o in wizard.KEY_OPTIONS
             ],
         }
@@ -236,6 +239,60 @@ def attach(app, anexis) -> None:
                     task.cancel()
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+    # ---- models ------------------------------------------------------------
+    @app.get("/models")
+    async def models_state():
+        return await model_picker.state(settings)
+
+    @app.post("/models")
+    async def models_save(body: dict):
+        try:
+            backup = model_picker.save(settings, body.get("providers") or [])
+        except (ValueError, OSError) as e:
+            raise HTTPException(400, str(e)) from None
+        return {"saved": True, "backup": backup.name if backup else "", "restart": True}
+
+    @app.post("/models/test")
+    async def models_test(body: dict):
+        model = str(body.get("model", "")).strip()
+        if not model:
+            raise HTTPException(400, "Pick a model to try")
+        return await model_picker.test(settings, str(body.get("provider", "")), model, str(body.get("role") or "chat"))
+
+    # ---- Claude: how it is signed in and how full the plan is -------------
+    @app.get("/claude")
+    async def claude_state(fresh: bool = False):
+        auth = await anexis.claude.auth()
+        usage = await anexis.claude.usage(fresh) if auth["signed_in"] else None
+        model, note = (await anexis.claude.pick_model()) if auth["signed_in"] else (settings.claude_model, "")
+        resting, why = anexis.claude.available()
+        return {
+            **auth, "usage": usage, "model": model or "its best model", "note": note,
+            "switch_percent": settings.claude_switch_percent, "switch_model": settings.claude_switch_model,
+            "resting": "" if resting else why,
+        }
+
+    @app.post("/claude")
+    async def claude_settings(body: dict):
+        changes: dict[str, object] = {}
+        if "switch_percent" in body:
+            percent = int(body["switch_percent"])
+            if not 0 <= percent <= 100:
+                raise HTTPException(400, "The percent is between 0 and 100. 0 turns the switch off.")
+            changes["coder.claude_switch_percent"] = percent
+        for key in ("switch_model", "model"):
+            if key in body:
+                value = str(body[key]).strip()
+                if len(value) > 80 or any(c in value for c in " \n\"'"):
+                    raise HTTPException(400, "That is not a model name")
+                changes[f"coder.claude_{key}"] = value
+        if changes:
+            set_values(_config_path(settings), changes)
+            settings.claude_switch_percent = changes.get("coder.claude_switch_percent", settings.claude_switch_percent)
+            settings.claude_switch_model = changes.get("coder.claude_switch_model", settings.claude_switch_model)
+            settings.claude_model = changes.get("coder.claude_model", settings.claude_model)
+        return await claude_state()
 
     # ---- terminal ----------------------------------------------------------
     @app.websocket("/terminal")

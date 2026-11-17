@@ -88,15 +88,25 @@ class KeyOption:
     turns_on: str
     get_it: str
     prefixes: tuple = ()  # what a real one starts with, for a paste check
+    secret: bool = True   # False for things like an address, which may be shown while typing
 
 
 KEY_OPTIONS = [
     KeyOption("NVIDIA_API_KEY", "Nvidia key", "Nvidia hosted models",
               "big models with no GPU needed, and the backup when Ollama is down",
               "free at build.nvidia.com", ("nvapi-",)),
+    KeyOption("OLLAMA_API_KEY", "Ollama key", "Ollama cloud models",
+              "Ollama's hosted models, for big models without a big GPU. Not needed for Ollama on this computer",
+              "ollama.com/settings/keys"),
     KeyOption("ANTHROPIC_API_KEY", "Anthropic key", "Claude for code",
-              "Claude writes your code. Skip this if you log in by running `claude` instead",
+              "Claude writes your code. Skip this if you have a Claude plan (Pro or Max) and sign in with that instead",
               "console.anthropic.com", ("sk-ant-",)),
+    KeyOption("CANVAS_URL", "Canvas address", "Canvas: your school's address",
+              "where your school's Canvas lives, like https://yourschool.instructure.com",
+              "it is the address in your browser when you open Canvas", ("https://",), secret=False),
+    KeyOption("CANVAS_TOKEN", "Canvas token", "Canvas: assignments and class files",
+              "missing and upcoming assignments, reminders, and downloading slides from any class",
+              "in Canvas: Account, Settings, New Access Token"),
     KeyOption("GITHUB_TOKEN", "GitHub token", "GitHub",
               "code search, issues and pull requests",
               "github.com/settings/tokens", ("ghp_", "github_pat_", "gho_")),
@@ -256,6 +266,8 @@ def key_warning(name: str, value: str) -> str:
     if any(c.isspace() for c in value):
         return "That has a space in it. Keys never do, so it may be a bad paste."
     prefixes = next((o.prefixes for o in KEY_OPTIONS if o.env == name), ())
+    if name == "CANVAS_URL":
+        return "" if value.startswith("https://") else "That should be the full address, starting with https://. Saved anyway."
     if prefixes and not value.startswith(prefixes):
         return f"Heads up: these usually start with {' or '.join(prefixes)}. Saved anyway."
     if len(value) < 12:
@@ -474,7 +486,7 @@ def run_keys(
             f"          Turns on: {option.turns_on}\n"
             f"          Get one:  {option.get_it}\n"
             f"          Now:      {now}")
-        answer = ask(f"         {option.label}: ", "", True).strip()
+        answer = ask(f"         {option.label}: ", "", option.secret).strip()
         if answer == "-":
             changes[option.env] = ""
             say("          removed")

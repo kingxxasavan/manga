@@ -4,6 +4,7 @@ import stat
 import pytest
 
 from anexis.cli.setup import (
+    KEY_OPTIONS,
     PRESETS,
     Machine,
     build_toml,
@@ -189,7 +190,8 @@ def test_every_option_that_needs_a_key_is_asked_about_on_its_own(tmp_path):
     for option in ("Nvidia", "Anthropic", "GitHub", "Notion", "Brave", "Tavily", "Firecrawl", "Exa"):
         assert sum(option in q for q in asked) == 1, option
     assert "NOTION_TOKEN=ntn_abc123456789" in (home / ".env").read_text()
-    assert "1 of 8" in shown and "8 of 8" in shown
+    total = len(KEY_OPTIONS)
+    assert f"1 of {total}" in shown and f"{total} of {total}" in shown
 
 
 def test_the_choices_step_never_asks_for_a_key(tmp_path):

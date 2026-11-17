@@ -146,6 +146,10 @@ class MCPManager:
         self.status: dict[str, dict] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._stop = asyncio.Event()
+        # npx servers start one at a time. Several npx downloads at once write
+        # to the same npm cache, and on Windows they knock each other over.
+        self._one_at_a_time = {"npm": asyncio.Lock()}
+        self.log_dir = settings.home / "tool-logs"
 
     async def start(self, only: set[str] | None = None) -> None:
         """Start every usable server at once and wait until each is up or failed."""
@@ -187,17 +191,69 @@ class MCPManager:
 
     async def _serve(self, spec: ServerSpec, ready: asyncio.Event) -> None:
         """One task owns one server for its whole life, so the connection is
-        opened and closed by the same task."""
+        opened and closed by the same task. A server that falls over before it
+        is up gets one more try, since a first download often fails once."""
         info = self.status[spec.name]
         source = f"mcp:{spec.name}"
+        tries = 1 if spec.type == "http" else 2
         try:
-            self.settings.workspace.mkdir(parents=True, exist_ok=True)
-            with open(os.devnull, "w") as quiet:
+            for attempt in range(1, tries + 1):
+                try:
+                    await self._connect(spec, source, info, ready)
+                    return  # it ran and was asked to stop
+                except TimeoutError:
+                    info.update(state="failed", error=f"did not start within {self.start_timeout:g} seconds")
+                except BaseException as e:  # includes ExceptionGroup from the client's task group
+                    if isinstance(e, asyncio.CancelledError):
+                        raise
+                    info.update(state="failed", error=_explain(e))
+                said = self._log_tail(spec.name)
+                if said:
+                    info["log"] = said
+                    info["error"] = f"{info['error']}. It said: {said.splitlines()[-1][:200]}"
+                if ready.is_set() or self._stop.is_set() or attempt == tries:
+                    return  # it was up and then died, or there is no point trying again
+                info.update(state="starting", error="", retried=True)
+        finally:
+            self.registry.remove_source(source)
+            if info["state"] == "running":
+                info.update(state="stopped", tools=0)
+            ready.set()
+
+    def _log_path(self, name: str) -> Path:
+        return self.log_dir / f"{name}.log"
+
+    def _log_tail(self, name: str, lines: int = 12) -> str:
+        """The last things a server wrote before it stopped: the real reason."""
+        try:
+            text = self._log_path(name).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+        kept = [line.rstrip() for line in text.splitlines() if line.strip()]
+        return "\n".join(kept[-lines:])[-1500:]
+
+    async def _connect(self, spec: ServerSpec, source: str, info: dict, ready: asyncio.Event) -> None:
+        self.settings.workspace.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        lock = self._one_at_a_time.get(spec.type)
+        if lock:
+            await lock.acquire()
+
+        def let_next_start() -> None:
+            nonlocal lock
+            if lock:
+                lock.release()
+                lock = None
+
+        try:
+            # What the server prints to its error stream is kept, so a failed
+            # start can be explained instead of just reported.
+            with open(self._log_path(spec.name), "w", encoding="utf-8") as said:
                 connection = self._connection(spec)
                 if isinstance(connection, StdioServerParameters):
                     from mcp import stdio_client
 
-                    connection = stdio_client(connection, errlog=quiet)
+                    connection = stdio_client(connection, errlog=said)
                 async with asyncio.timeout(self.start_timeout) as deadline:
                     async with Client(connection) as client:
                         tools, cursor = [], None
@@ -208,22 +264,15 @@ class MCPManager:
                             if not cursor:
                                 break
                         deadline.reschedule(None)  # it is up, no more deadline
+                        let_next_start()
                         for remote in tools:
                             self.registry.add(self._wrap(spec, source, client, remote))
-                        info.update(state="running", tools=len(tools))
+                        info.update(state="running", tools=len(tools), error="")
+                        info.pop("log", None)
                         ready.set()
                         await self._stop.wait()
-        except TimeoutError:
-            info.update(state="failed", error=f"did not start within {self.start_timeout:g} seconds")
-        except BaseException as e:  # includes ExceptionGroup from the client's task group
-            if isinstance(e, asyncio.CancelledError):
-                raise
-            info.update(state="failed", error=_explain(e))
         finally:
-            self.registry.remove_source(source)
-            if info["state"] == "running":
-                info.update(state="stopped", tools=0)
-            ready.set()
+            let_next_start()
 
     def _wrap(self, spec: ServerSpec, source: str, client: Client, remote) -> Tool:
         read_only = bool(remote.annotations and remote.annotations.read_only_hint)

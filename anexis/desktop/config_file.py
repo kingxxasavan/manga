@@ -51,3 +51,24 @@ def set_values(path: Path, values: dict[str, object]) -> None:
     tomllib.loads(text)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def _table(values: dict) -> list[str]:
+    return [f"{key} = {_value(value)}" for key, value in values.items() if not isinstance(value, (dict, list))]
+
+
+def dump(data: dict) -> str:
+    """A settings dict as TOML, in the shape anexis.toml has: plain values on
+    top, then the providers in the order they are tried, then the sections."""
+    lines = ["# Written by Anexis. Edit freely, or change it from the app.", ""]
+    lines += _table(data)
+    for provider in data.get("providers", []):
+        lines += ["", "[[providers]]", *_table(provider)]
+        if provider.get("models"):
+            lines += ["[providers.models]", *_table(provider["models"])]
+    for name, section in data.items():
+        if isinstance(section, dict) and section:
+            lines += ["", f"[{name}]", *_table(section)]
+    text = "\n".join(lines) + "\n"
+    tomllib.loads(text)  # never write a file Anexis could not read back
+    return text
