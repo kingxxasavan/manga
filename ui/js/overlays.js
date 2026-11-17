@@ -1,0 +1,257 @@
+// The screens that open over the deck: keys, checkup, About me and the App
+// screen. Setup has its own file (setup.js).
+
+import * as api from "./api.js";
+import { $, h, toast } from "./dom.js";
+
+let onClose = null, locked = false, lastFocus = null;
+
+/** Opens the sheet with a title and a body. `lock` stops it being closed
+ *  half way through something (an install, a restart). */
+export function openSheet(title, body, options = {}) {
+  lastFocus = lastFocus || document.activeElement;
+  $("#sheet-title").textContent = title;
+  $("#sheet-body").replaceChildren(...[body].flat());
+  $("#overlay").hidden = false;
+  onClose = options.onClose || null;
+  setLocked(Boolean(options.lock));
+  ($("#sheet-body").querySelector("[autofocus], input, textarea, select, button") || $("#sheet-close")).focus();
+}
+
+export function setLocked(value) {
+  locked = value;
+  $("#sheet-close").hidden = value;
+}
+
+export function closeSheet(force = false) {
+  if (locked && !force) return;
+  $("#overlay").hidden = true;
+  $("#sheet-body").replaceChildren();
+  locked = false;
+  onClose?.();
+  onClose = null;
+  lastFocus?.focus?.();
+  lastFocus = null;
+}
+
+export const sheetOpen = () => !$("#overlay").hidden;
+
+export function initSheet() {
+  $("#sheet-close").addEventListener("click", () => closeSheet());
+  $("#overlay").addEventListener("pointerdown", (e) => e.target === $("#overlay") && closeSheet());
+  $("#overlay").addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;  // keep Tab inside the sheet
+    const stops = [...$("#sheet").querySelectorAll("button, input, textarea, select, a[href]")].filter((el) => !el.disabled && el.offsetParent);
+    if (!stops.length) return;
+    const first = stops[0], last = stops.at(-1);
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+}
+
+/** Restarts the brain and resolves once it answers again. */
+export async function restartBrain(say = () => {}) {
+  const reply = await api.post("/app/restart");
+  if (!reply.restarting) { say(reply.why); return false; }
+  say("Restarting the brain...");
+  await new Promise((r) => setTimeout(r, 1200));
+  for (let i = 0; i < 120; i++) {
+    try { await api.get("/health"); say("Back up."); return true; } catch { await new Promise((r) => setTimeout(r, 500)); }
+  }
+  say("It is taking a long time. Look at server.log in the Anexis home folder.");
+  return false;
+}
+
+// ---- keys ----------------------------------------------------------------
+
+/** The list of key fields, shared by setup and the Keys screen. */
+export function keyFields(keys) {
+  const inputs = new Map();
+  const el = h("div", keys.map((key) => {
+    const input = h("input", { type: "password", placeholder: key.set ? "leave empty to keep it" : key.label, autocomplete: "off", spellcheck: false, "aria-label": key.label });
+    const warn = h("div.warnline");
+    inputs.set(key.env, { input, warn });
+    return h("div.keyrow",
+      h("div", h("b", key.title), h("small", `Turns on: ${key.turns_on}`), h("small", `Get one: ${key.get_it}`)),
+      h("div", input, h("small.state", key.set ? `saved${key.ends ? `, ends in ...${key.ends}` : ""}. Type - to remove it.` : "")),
+      warn);
+  }));
+  return {
+    el,
+    values() {
+      const out = {};
+      for (const [env, { input }] of inputs) if (input.value.trim()) out[env] = input.value.trim();
+      return out;
+    },
+    showWarnings(warnings) {
+      for (const [env, { warn }] of inputs) warn.textContent = warnings[env] || "";
+    },
+  };
+}
+
+export async function openKeys() {
+  let state;
+  try { state = await api.get("/setup"); } catch (e) { return toast(e.message, "bad"); }
+  const fields = keyFields(state.keys), status = h("span.left");
+  const save = h("button.btn.primary", { type: "button" }, "Save keys");
+  save.onclick = async () => {
+    const keys = fields.values();
+    if (!Object.keys(keys).length) return closeSheet();
+    save.disabled = true;
+    try {
+      const reply = await api.post("/setup", { keys });
+      fields.showWarnings(reply.warnings);
+      setLocked(true);
+      const ok = await restartBrain((line) => { status.textContent = line; });
+      setLocked(false);
+      if (ok && !Object.keys(reply.warnings).length) { closeSheet(); toast("Keys saved and loaded."); }
+    } catch (e) {
+      status.textContent = e.message;
+    }
+    save.disabled = false;
+  };
+  openSheet("Keys", [
+    h("p", "Each key turns one thing on. They are saved in a private file on this computer and nowhere else. What you type stays hidden."),
+    fields.el,
+    h("div.sheet-foot", status, h("button.btn.ghost", { type: "button", onclick: () => closeSheet() }, "Cancel"), save),
+  ]);
+}
+
+// ---- checkup -------------------------------------------------------------
+
+export async function openDoctor() {
+  const lines = h("div.checks", h("div.empty", "Checking every part..."));
+  const again = h("button.btn", { type: "button" }, "Check again");
+  const run = async () => {
+    again.disabled = true;
+    try {
+      const checks = await api.get("/doctor");
+      const broken = checks.filter((c) => !c.ok && !c.optional).length;
+      lines.replaceChildren(...checks.map((c) => h(`div.checkline.${c.ok ? "ok" : c.optional ? "opt" : "bad"}`,
+        h("i", c.ok ? "OK" : c.optional ? "OFF" : "FIX"), h("b", c.part), h("span", c.detail), c.fix ? h("small", `Fix: ${c.fix}`) : null)));
+      $("#sheet-title").textContent = broken ? `Checkup: ${broken} to fix` : "Checkup: all good";
+    } catch (e) {
+      lines.replaceChildren(h("div.empty", e.message));
+    }
+    again.disabled = false;
+  };
+  again.onclick = run;
+  openSheet("Checkup", [lines, h("div.sheet-foot", again, h("button.btn.ghost", { type: "button", onclick: () => closeSheet() }, "Close"))]);
+  run();
+}
+
+// ---- about me ------------------------------------------------------------
+
+export async function openAbout() {
+  let sections, saved;
+  try {
+    [sections, saved] = await Promise.all([api.get("/aboutme/sections"), api.get("/aboutme")]);
+  } catch (e) { return toast(e.message, "bad"); }
+  const fields = sections.map((s) => {
+    const current = saved[s.key];
+    const input = s.many
+      ? h("textarea", { rows: 3, placeholder: "one per line" }, Array.isArray(current) ? current.join("\n") : current || "")
+      : h("input", { type: "text", value: typeof current === "string" ? current : "" });
+    // An answer stored in a richer shape (from a hand written file) is shown, not edited.
+    const rich = current && typeof current === "object" && !Array.isArray(current);
+    if (rich) { input.value = JSON.stringify(current); input.disabled = true; }
+    return { s, input, rich, el: h("label.field", h("span", s.label), input, h("small", s.question)) };
+  });
+  const status = h("span.left");
+  const save = async () => {
+    const data = {};
+    for (const { s, input, rich } of fields) {
+      if (rich) continue;
+      data[s.key] = s.many ? input.value.split("\n").map((v) => v.trim()).filter(Boolean) : input.value.trim();
+    }
+    try {
+      const report = await api.post("/aboutme", data);
+      document.dispatchEvent(new CustomEvent("anexis:memory-changed"));
+      closeSheet();
+      toast(`Saved. ${report.added} new, ${report.changed} changed, ${report.removed} removed.`);
+    } catch (e) {
+      status.textContent = e.message;
+    }
+  };
+  openSheet("About me", [
+    h("p", "Anexis uses this in every reply, so it never has to ask twice. Leave anything empty. It stays on this computer."),
+    h("div.form", fields.map((f) => f.el)),
+    h("div.sheet-foot", status, h("button.btn.ghost", { type: "button", onclick: () => closeSheet() }, "Cancel"), h("button.btn.primary", { type: "button", onclick: save }, "Save")),
+  ]);
+}
+
+// ---- the app screen ------------------------------------------------------
+
+const THEMES = { ion: "#4fe3ff", ember: "#ff9d3c", verdant: "#5dff9b", ultra: "#b48cff" };
+
+export async function openApp(hooks) {
+  let info, settings;
+  try {
+    [info, settings] = await Promise.all([api.get("/app"), api.get("/settings")]);
+  } catch (e) { return toast(e.message, "bad"); }
+  const status = h("span.left");
+  const sep = info.folder.includes("\\") ? "\\" : "/";
+  const swatch = (name) => h("button.swatch", {
+    type: "button", "aria-pressed": String(document.documentElement.dataset.theme === name),
+    onclick: (e) => {
+      hooks.setTheme(name);
+      for (const other of e.currentTarget.parentNode.children) other.setAttribute("aria-pressed", String(other === e.currentTarget));
+    },
+  }, h("i", { style: `background:${THEMES[name]}` }), name);
+  const nameInput = h("input", { type: "text", value: settings.name, maxLength: 40 });
+  const fx = h("input", { type: "checkbox", checked: document.documentElement.dataset.fx !== "off" });
+  fx.onchange = () => hooks.setFx(fx.checked);
+
+  openSheet("App", [
+    h("dl.kv",
+      h("dt", "version"), h("dd", `${info.version}${info.installed ? " (installed app)" : " (running from source)"}`),
+      h("dt", "app folder"), h("dd", info.folder),
+      h("dt", "your data"), h("dd", `${settings.home}  (memory, keys, settings)`),
+      h("dt", "workspace"), h("dd", settings.workspace),
+      h("dt", "runs on"), h("dd", `${info.platform}, Python ${info.python}`),
+    ),
+    h("p", h("b", "Change this app without rebuilding it."), " Everything it runs is plain files in the app folder:"),
+    h("ul.howto",
+      h("li", h("code", `ui${sep}`), " is this screen. Save a file there and the window reloads by itself."),
+      h("li", h("code", `anexis${sep}`), " is the brain. Save a Python file there and the brain restarts in a second or two. A file with a mistake in it is held back, so a working brain is never replaced by a broken one."),
+      h("li", h("code", `desktop${sep}frame.js`), " is the window itself. That one needs the app closed and opened again."),
+    ),
+    h("div.actions",
+      h("button.btn.primary", { type: "button", onclick: () => { closeSheet(); hooks.terminalAt(info.folder, "claude"); } }, "Edit with Claude"),
+      h("button.btn", { type: "button", onclick: () => api.post("/files/open", { path: info.folder }).catch((e) => toast(e.message, "bad")) }, "Open app folder"),
+      h("button.btn", { type: "button", onclick: () => location.reload() }, "Reload screen"),
+      h("button.btn", { type: "button", onclick: async (e) => {
+        e.target.disabled = true;
+        setLocked(true);
+        await restartBrain((line) => { status.textContent = line; });
+        setLocked(false);
+        e.target.disabled = false;
+      } }, "Restart brain"),
+    ),
+    h("div.form",
+      h("div.field", h("span", "Theme"), h("div.swatches", Object.keys(THEMES).map(swatch))),
+      h("label.check-row", fx, h("div", h("b", "Scan lines"), h("small", "The faint lines over the screen. Turn off if they bother you."))),
+      h("label.field", h("span", "Name"), nameInput, h("small", "What the assistant is called.")),
+    ),
+    h("div.sheet-foot", status,
+      h("button.btn.ghost", { type: "button", onclick: () => closeSheet() }, "Close"),
+      h("button.btn.primary", { type: "button", onclick: async () => {
+        const name = nameInput.value.trim();
+        if (name && name !== settings.name) {
+          try { await api.post("/settings", { name }); hooks.onName(name); } catch (e) { status.textContent = e.message; return; }
+        }
+        closeSheet();
+      } }, "Done")),
+  ]);
+}
+
+/** Shown when the server wants a token this window does not have. */
+export function openLock(retry) {
+  const input = h("input", { type: "password", placeholder: "paste the token", autocomplete: "off" });
+  openSheet("Locked", [
+    h("p", "This Anexis can control the whole computer, so it only answers the app. Open it from the Anexis app, or run ", h("code", "anexis ui"), " in a terminal, and this screen opens unlocked."),
+    h("p", "Or paste the token from the ", h("code", ".env"), " file in the Anexis home folder (the line that starts with ANEXIS_TOKEN)."),
+    h("form.form", { onsubmit: (e) => { e.preventDefault(); if (input.value.trim()) { api.setToken(input.value); closeSheet(true); retry(); } } },
+      input, h("div.sheet-foot", h("button.btn.primary", { type: "submit" }, "Unlock"))),
+  ], { lock: true });
+}

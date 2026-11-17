@@ -178,6 +178,7 @@ def create_app(anexis) -> FastAPI:
         async def stream():
             feed = anexis.events.subscribe().__aiter__()
             nxt = None
+            yield json.dumps({"type": "hello", "name": settings.name, "control": settings.control}) + "\n"
             try:
                 while True:
                     nxt = nxt or asyncio.ensure_future(feed.__anext__())

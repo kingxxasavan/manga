@@ -168,7 +168,7 @@ async def delete_item(args: dict, ctx: ToolContext) -> str:
 _ID = params(["id"], id={"type": "integer", "description": "The item number"})
 
 TOOLS = [
-    Tool("time_now", "Current date, time, weekday and timezone on the server.", params(), time_now, core=True),
+    Tool("time_now", "Current date, time, weekday and timezone on the owner's computer.", params(), time_now, core=True),
     Tool("calculate", "Do exact math. Supports + - * / ** % and sqrt, sin, cos, log, exp, floor, ceil, factorial, pi, e.",
          params(["expression"], expression=text("Math expression, e.g. (3.5 * 12) / sqrt(2)")), calculate),
     Tool("remember", "Save something lasting about the owner or their world so it is known in future conversations.",

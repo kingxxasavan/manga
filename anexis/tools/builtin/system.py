@@ -119,10 +119,10 @@ TOOLS = [
          params(["path", "content"], path=_PATH, content=text("Full file content"), append={"type": "boolean"}),
          write_file, tier=WRITE),
     Tool("list_dir", "List the files and folders in a folder.", params(path=_PATH), list_dir, tier=WRITE),
-    Tool("run_shell", "Run a shell command on the server. The owner is asked before it runs.",
+    Tool("run_shell", "Run a shell command on the owner's computer. It is PowerShell on Windows and sh on Linux and macOS.",
          params(["command"], command=text("The command"), cwd=text("Folder to run in, default is the workspace"),
                 timeout={"type": "number", "description": "Seconds before it is stopped, default 120"}),
          run_shell, tier=DANGER),
-    Tool("run_python", "Run a Python script on the server and return what it prints. The owner is asked before it runs.",
+    Tool("run_python", "Run a Python script on the owner's computer and return what it prints.",
          params(["code"], code=text("Python source"), timeout={"type": "number"}), run_python, tier=DANGER),
 ]

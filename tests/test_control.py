@@ -94,7 +94,7 @@ async def test_every_tool_call_shows_up_in_the_activity_feed(live, settings):
     async def listen():
         async with httpx.AsyncClient(base_url=client.url, timeout=None) as http, http.stream("GET", "/events") as resp:
             async for line in resp.aiter_lines():
-                if line.strip():
+                if line.strip() and json.loads(line)["type"] == "activity":
                     seen.append(json.loads(line))
                     if seen[-1].get("status") in ("done", "failed"):
                         return

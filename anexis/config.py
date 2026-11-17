@@ -217,6 +217,8 @@ def load_settings(env: Mapping[str, str] | None = None, config_path=_UNSET) -> S
 
     if "ANEXIS_WORKSPACE" in merged:
         flat["workspace"] = merged["ANEXIS_WORKSPACE"]
+    if merged.get("ANEXIS_UI_DIR"):
+        flat["ui_dir"] = merged["ANEXIS_UI_DIR"]
     if "ANEXIS_HOST" in merged:
         flat["host"] = merged["ANEXIS_HOST"]
     if "ANEXIS_PORT" in merged:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import platform as host_platform
 import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -21,7 +22,7 @@ MODES = ("general", "school", "work", "project")
 ABOUT_BUDGET = 3000  # characters of About Me always sent
 LESSON_BUDGET = 1500  # characters of standing instructions always sent
 
-SYSTEM = """You are {name}, a personal assistant that lives on your owner's own server. You help with school, work and whatever projects they are thinking through.
+SYSTEM = """You are {name}, a personal assistant that lives on your owner's own computer ({system}). You help with school, work and whatever projects they are thinking through.
 
 Now: {now}. Mode: {mode}.
 
@@ -126,6 +127,7 @@ class Agent:
             name=self.settings.name,
             now=datetime.now().astimezone().strftime("%A %Y-%m-%d %H:%M %Z"),
             mode=session["mode"],
+            system=f"{host_platform.system()} {host_platform.release()}",
             control=FULL_CONTROL if self.settings.control == "full" else "",
             about=_block("About your owner (always true):", self._about()),
             lessons=_block("Standing instructions from your owner. Follow them in every reply:", [m.text for m in lessons]),

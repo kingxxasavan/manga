@@ -65,7 +65,7 @@ def decide(tool: Tool, args: dict, settings) -> tuple[str, str]:
     if tool.tier == SAFE:
         return "allow", ""
     if tool.tier == DANGER:
-        return "ask", "this can change things on the server or send things out"
+        return "ask", "this can change things on this computer or send things out"
     outside = [p for p in _paths(args) if not inside(p, settings.workspace)]
     if outside:
         return "ask", f"touches a path outside the workspace: {outside[0]}"
