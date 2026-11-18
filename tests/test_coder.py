@@ -37,7 +37,7 @@ async def test_claude_does_the_task_inside_the_project_folder(claude, settings):
     assert (settings.workspace / "hello.py").exists()
     seen = claude.calls()[0]
     assert seen["cwd"] == str(settings.workspace) and "make a hello script" in seen["argv"]
-    assert "json" in seen["argv"]
+    assert "stream-json" in seen["argv"]
 
 
 @pytest.mark.parametrize("mode", ["limit_exit1", "limit_clean", "limit_plain", "credit"])
@@ -263,7 +263,7 @@ async def test_usage_ignores_a_meter_for_one_single_model_and_is_remembered_brie
     runner.mode("ok")
     monkeypatch.setenv("FAKE_CLAUDE_USAGE", "30")
     reading = await runner.usage()
-    assert reading["percent"] == 30 and {r["kind"] for r in reading["rows"]} == {"session", "weekly_all"}
+    assert reading["percent"] == 30  # the 99% meter for one single model is left out
     monkeypatch.setenv("FAKE_CLAUDE_USAGE", "95")
     assert (await runner.usage())["percent"] == 30       # still the remembered reading
     assert (await runner.usage(fresh=True))["percent"] == 95
@@ -290,3 +290,36 @@ async def test_sign_in_state_is_read_from_claude_itself(claude, settings, monkey
     assert key["signed_in"] and key["plan"] is False
     settings.claude_bin = "/nonexistent/claude"
     assert (await runner.auth()) == {"installed": False, "signed_in": False, "method": "none"}
+
+
+def test_usage_is_read_from_the_plain_text_report_skipping_one_model_meters():
+    from anexis.coder.claude import usage_from_text
+
+    text = ("Current session\n  ████   23% used\n  Resets 5pm\n\nCurrent week (all models)\n  ██  41.5% used\n\n"
+            "Current week (Opus)\n  █████████  99% used\n")
+    assert usage_from_text(text) == 41.5
+    assert usage_from_text("Session: 88% used") == 88
+    assert usage_from_text("Estimated cost: $0.0000\nUsage: 0 input, 0 output") is None
+
+
+async def test_usage_comes_from_the_text_report_this_claude_version_prints(claude, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.delenv("FAKE_CLAUDE_USAGE", raising=False)
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE_TEXT", "86")
+    assert (await runner.usage(fresh=True))["percent"] == 86
+    assert (await runner.pick_model())[0] == "opus"
+
+
+async def test_a_coding_run_updates_the_usage_reading_on_its_own(claude, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.delenv("FAKE_CLAUDE_USAGE", raising=False)
+    monkeypatch.setenv("FAKE_CLAUDE_RUN_UTILIZATION", "0.9")   # 90%, said while it worked
+    result = await runner.run("write hello", tmp_path)
+    assert result.ok and result.text.startswith("Created hello.py")
+    reading = await runner.usage()
+    assert reading["percent"] == 90 and reading["source"] == "coding run"
+    assert (await runner.pick_model())[0] == "opus"
+    argv = json.loads((tmp_path / "claude.log").read_text().splitlines()[-1])["argv"]
+    assert argv[argv.index("--output-format") + 1] == "stream-json"

@@ -97,7 +97,7 @@ export function keyFields(keys) {
  *  plan and the rule for switching to a cheaper model when the plan runs low. */
 async function claudeBlock(hooks) {
   let state;
-  try { state = await api.get("/claude?fresh=true"); } catch { return null; }
+  try { state = await api.get("/claude"); } catch { return null; }
   if (!state.installed) {
     return h("div.prov", h("h4", h("b", "Claude for code"), h("span", "not installed")),
       h("p", "Claude Code is not installed, so Anexis writes code with its own model. Open Setup and tick Claude Code to add it."));
@@ -126,11 +126,68 @@ async function claudeBlock(hooks) {
     h("small", "0 turns the switch off. The model before the switch is Claude's own best one."));
 }
 
+/** Canvas through the school's own login page: no password goes through
+ *  Anexis and no token has to be made by hand. Only the desktop app can open
+ *  that login window, so in a plain browser the token boxes below are the way. */
+async function canvasBlock() {
+  let state;
+  try { state = await api.get("/canvas"); } catch { return null; }
+  const address = h("input", { type: "text", value: state.url || "", placeholder: "https://yourschool.instructure.com", "aria-label": "Canvas address", spellcheck: false });
+  const said = h("small", state.method === "session" ? `Signed in${state.user ? ` as ${state.user}` : ""} at ${state.url}.`
+    : state.method === "token" ? "Using a Canvas token from the keys below." : "Not signed in yet.");
+  if (state.method !== "none") said.className = "ok";
+  const app = window.anexisFrame;
+  const go = h("button.btn.primary", { type: "button", disabled: !app }, state.method === "session" ? "Sign in again" : "Sign in with my browser");
+  go.onclick = async () => {
+    const url = address.value.trim();
+    if (!url) { said.className = "bad"; said.textContent = "Put in your school's Canvas address first."; return address.focus(); }
+    go.disabled = true;
+    said.className = "";
+    said.textContent = "A Canvas window is open. Sign in there the way you always do.";
+    const result = await app.canvasSignIn(url);
+    go.disabled = false;
+    if (!result.ok) { said.className = "bad"; said.textContent = result.error; return; }
+    said.className = "ok";
+    said.textContent = `Signed in${result.user ? ` as ${result.user}` : ""}. Loading your classes...`;
+    setLocked(true);
+    await restartBrain(() => {});
+    setLocked(false);
+    closeSheet();
+    toast(`Canvas is connected${result.user ? ` for ${result.user}` : ""}. Your assignments show up in a moment.`);
+  };
+  const out = state.method === "session"
+    ? h("button.btn.ghost", { type: "button", onclick: async () => {
+        await api.del("/canvas/session");
+        setLocked(true);
+        await restartBrain(() => {});
+        setLocked(false);
+        closeSheet();
+        toast("Signed out of Canvas.");
+      } }, "Sign out") : null;
+  return h("div.prov",
+    h("h4", h("b", "Canvas"), h(`span${state.method === "none" ? ".warn" : ".ok"}`, state.method === "none" ? "not connected" : "connected")),
+    h("p", "Your school's own Canvas login opens in a window. Sign in there like always. Anexis never sees your username or password."),
+    h("div.inline", address, go, out),
+    said,
+    app ? null : h("small", "This button works in the Anexis app. In a plain browser, use a Canvas token in the boxes below."));
+}
+
+/** A part of a screen that fills itself in when its data arrives, so a slow
+ *  question (like asking Claude Code about the plan) never holds the screen up. */
+function later(load, waiting) {
+  const spot = h("div.prov", h("p", waiting));
+  load().then((el) => spot.replaceWith(el || h("span")), (e) => spot.replaceWith(h("div.prov", h("p", e.message || String(e)))));
+  return spot;
+}
+
 export async function openKeys(hooks = {}) {
-  let state, claude;
+  openSheet("Keys", h("div.empty", "Loading..."));
+  let state;
   try {
-    [state, claude] = await Promise.all([api.get("/setup"), claudeBlock(hooks)]);
-  } catch (e) { return toast(e.message, "bad"); }
+    state = await api.get("/setup");
+  } catch (e) { closeSheet(true); return toast(e.message, "bad"); }
+  const claude = later(() => claudeBlock(hooks), "Checking how Claude is signed in...");
+  const canvas = later(canvasBlock, "Checking Canvas...");
   const fields = keyFields(state.keys), status = h("span.left");
   const save = h("button.btn.primary", { type: "button" }, "Save keys");
   save.onclick = async () => {
@@ -151,6 +208,7 @@ export async function openKeys(hooks = {}) {
   };
   openSheet("Keys", [
     claude,
+    canvas,
     h("p", "Each key turns one thing on. They are saved in a private file on this computer and nowhere else. What you type stays hidden."),
     fields.el,
     h("div.sheet-foot", status, h("button.btn.ghost", { type: "button", onclick: () => closeSheet() }, "Cancel"), save),

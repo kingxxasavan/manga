@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -215,7 +216,62 @@ async def test_npx_servers_start_one_after_another(settings, tmp_path, monkeypat
                        "  - {name: one, type: npm, package: a, version: '1'}\n"
                        "  - {name: two, type: npm, package: b, version: '1'}\n")
     manager = MCPManager(settings, Registry(), start_timeout=30)
+    manager.install_npm = False
     await manager.start()
     assert {manager.status[n]["state"] for n in ("one", "two")} == {"running"}
     assert stamp.read_text().split() == ["start", "ready", "start", "ready"]  # never start, start
     await manager.stop()
+
+
+# ---- npm servers are installed once and run with node, not npx --------------
+
+def fake_npm(folder, monkeypatch):
+    """Stands in for npm: "installs" a package by writing its files."""
+    from anexis.tools import mcp_client
+
+    bin_dir = folder / "bin"
+    bin_dir.mkdir(parents=True)
+    script = bin_dir / "npm"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "args = sys.argv[1:]\n"
+        "prefix = args[args.index('--prefix') + 1]\n"
+        "spec = args[-1]\n"
+        "name, _, version = spec.rpartition('@')\n"
+        "if name == '@scope/broken': print('npm error 404 Not Found'); sys.exit(1)\n"
+        "pkg = os.path.join(prefix, 'node_modules', *name.split('/'))\n"
+        "os.makedirs(os.path.join(pkg, 'dist'), exist_ok=True)\n"
+        "json.dump({'name': name, 'version': version, 'bin': {'server-fs': 'dist/index.js'}}, open(os.path.join(pkg, 'package.json'), 'w'))\n"
+        "open(os.path.join(pkg, 'dist', 'index.js'), 'w').write('// server')\n"
+    )
+    script.chmod(0o755)
+    monkeypatch.setattr(mcp_client, "tool_path", lambda: str(bin_dir) + os.pathsep + os.environ.get("PATH", ""))
+
+
+async def test_an_npm_server_is_installed_once_then_started_with_node(settings, tmp_path, monkeypatch):
+    import io
+
+    from anexis.tools import mcp_client
+
+    fake_npm(tmp_path, monkeypatch)
+    manifest(settings, "servers:\n  - {name: fs, type: npm, package: '@scope/server-fs', version: '2.3.0', bin: server-fs, args: ['{workspace}']}\n")
+    (spec,) = load_manifest(settings)
+    assert Path(launch_command(spec, settings)[0]).name == "npx"          # not installed yet
+    entry = await mcp_client.npm_install(spec, settings, io.StringIO())
+    assert entry.name == "index.js" and "_scope_server-fs_2.3.0" in str(entry)
+    node, script, *rest = launch_command(spec, settings)
+    assert Path(node).stem == "node" and script == str(entry) and rest == [str(settings.workspace)]
+    assert await mcp_client.npm_install(spec, settings, io.StringIO()) == entry   # second time: nothing to do
+
+
+async def test_a_failed_install_says_why(settings, tmp_path, monkeypatch):
+    import io
+
+    from anexis.tools import mcp_client
+
+    fake_npm(tmp_path, monkeypatch)
+    manifest(settings, "servers:\n  - {name: bad, type: npm, package: '@scope/broken', version: '1.0.0'}\n")
+    (spec,) = load_manifest(settings)
+    with pytest.raises(RuntimeError, match="404"):
+        await mcp_client.npm_install(spec, settings, io.StringIO())

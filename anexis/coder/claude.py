@@ -117,6 +117,61 @@ def plan_percent(report: dict) -> tuple[float, list[dict]] | None:
     return max(r["percent"] for r in rows), rows
 
 
+PERCENT_USED = re.compile(r"(\d{1,3}(?:\.\d+)?)\s*%\s*used", re.I)
+ONE_MODEL = re.compile(r"\((?!all\b)[^)]*\b(opus|sonnet|haiku|fable|mythos)\b[^)]*\)", re.I)
+
+
+def usage_from_text(text: str) -> float | None:
+    """The plan percent from the plain text /usage report. Lines look like
+    "Current week (all models)" followed by a bar and "41% used". A meter for
+    one single model is left out, it says nothing about the rest."""
+    best, heading = None, ""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        hit = PERCENT_USED.search(line)
+        if not hit:
+            heading = line
+            continue
+        label = line if re.search(r"[a-z]{4}", line[: hit.start()], re.I) else heading
+        if ONE_MODEL.search(label):
+            continue
+        value = float(hit.group(1))
+        best = value if best is None else max(best, value)
+    return best
+
+
+def usage_from_output(output: str) -> float | None:
+    """The plan percent from whatever a Claude Code run printed in stream-json:
+    a usage report, usage notes sent while it worked, or report text."""
+    best = None
+    for line in output.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        value = None
+        report = _find(event, "usage_report")
+        if isinstance(report, dict):
+            found = plan_percent(report)
+            value = found[0] if found else None
+        info = event.get("rate_limit_info") if event.get("type") == "rate_limit_event" else None
+        if value is None and isinstance(info, dict) and isinstance(info.get("utilization"), (int, float)):
+            used = float(info["utilization"])
+            value = used * 100 if used <= 1 else used  # a share of 1, or already a percent
+        if value is None and event.get("type") in ("assistant", "result"):
+            texts = [str(event.get("result") or "")]
+            texts += [str(b.get("text", "")) for b in (event.get("message") or {}).get("content") or [] if isinstance(b, dict)]
+            value = usage_from_text("\n".join(texts))
+        if value is not None:
+            best = value if best is None else max(best, value)
+    return best
+
+
 class ClaudeRunner:
     def __init__(self, settings: Settings, memory: Memory):
         self.settings = settings
@@ -155,29 +210,31 @@ class ClaudeRunner:
             "email": str(info.get("email") or ""), "subscription": str(info.get("subscriptionType") or ""),
         }
 
+    def note_usage(self, percent: float, source: str, resets_at=None) -> None:
+        """Keeps the newest reading of how full the plan is."""
+        self.memory.kv_set(USAGE_KEY, {"at": time.time(), "percent": round(float(percent), 1), "source": source, "resets_at": resets_at})
+
     async def usage(self, fresh: bool = False) -> dict | None:
-        """How much of the Claude plan is used, as {"percent", "rows", "at"}.
+        """How much of the Claude plan is used, as {"percent", "at", "source"}.
         None when Claude Code cannot say: it runs on an API key, it is not
-        signed in, or this version does not report it. Asking costs no usage."""
+        signed in, or this version does not report it. Asking costs no usage.
+
+        Readings come from three places, newest wins: the usage notes Claude
+        Code sends while it codes, the structured /usage report, and the
+        plain text /usage report."""
         cached = self.memory.kv_get(USAGE_KEY, None)
         if cached and not fresh and time.time() - cached.get("at", 0) < USAGE_TTL:
             return cached if cached.get("percent") is not None else None
         _, output = await self._probe(["-p", "/usage", "--output-format", "stream-json", "--verbose"])
-        reading: dict = {"at": time.time(), "percent": None}
-        for line in output.splitlines():
-            line = line.strip()
-            if not line.startswith("{") or "usage_report" not in line:
-                continue
-            try:
-                report = _find(json.loads(line), "usage_report")
-            except ValueError:
-                continue
-            found = plan_percent(report) if isinstance(report, dict) else None
-            if found:
-                reading.update(percent=found[0], rows=found[1])
-                break
-        self.memory.kv_set(USAGE_KEY, reading)
-        return reading if reading["percent"] is not None else None
+        found = usage_from_output(output)
+        if found is not None:
+            self.note_usage(found, "usage report")
+            return self.memory.kv_get(USAGE_KEY)
+        # Nothing new. A reading from a recent coding run is still worth using.
+        if cached and cached.get("percent") is not None and time.time() - cached.get("at", 0) < 6 * 3600:
+            return cached
+        self.memory.kv_set(USAGE_KEY, {"at": time.time(), "percent": None})
+        return None
 
     async def pick_model(self) -> tuple[str, str]:
         """(model to pass to Claude Code, why). Normally the owner's usual model.
@@ -200,7 +257,9 @@ class ClaudeRunner:
     def _command(self, task: str, guidance: str, model: str = "") -> list[str]:
         command = [
             self.settings.claude_bin, "-p", task,
-            "--output-format", "json",
+            # stream-json, so the usage notes Claude Code sends while it works
+            # can be read too. The last line is still the usual result.
+            "--output-format", "stream-json", "--verbose",
             "--permission-mode", "acceptEdits",
             "--allowedTools", ALLOWED_TOOLS,
         ]
@@ -223,6 +282,9 @@ class ClaudeRunner:
 
         result = self._classify(code, output)
         result.model, result.note = model, note
+        seen = usage_from_output(output)
+        if seen is not None:
+            self.note_usage(seen, "coding run")
         if result.limited:
             if result.reset_at is None:
                 result.reset_at = time.time() + self.settings.claude_backoff_minutes * 60

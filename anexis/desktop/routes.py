@@ -8,6 +8,7 @@ import json
 import os
 import platform as host_platform
 import sys
+import time
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -310,6 +311,57 @@ def attach(app, anexis) -> None:
             settings.claude_switch_model = changes.get("coder.claude_switch_model", settings.claude_switch_model)
             settings.claude_model = changes.get("coder.claude_model", settings.claude_model)
         return await claude_state()
+
+    # ---- Canvas: signed in through the browser -----------------------------
+    @app.get("/canvas")
+    async def canvas_state():
+        from anexis.tools.builtin import canvas
+
+        if settings.env.get("CANVAS_URL") and settings.env.get("CANVAS_TOKEN"):
+            return {"method": "token", "url": settings.env["CANVAS_URL"], "user": ""}
+        session = canvas.load_session(settings)
+        if session:
+            return {"method": "session", "url": session["url"], "user": session.get("user", ""), "saved_at": session.get("saved_at", 0)}
+        return {"method": "none", "url": read_dotenv(settings.home / ".env").get("CANVAS_URL", ""), "user": ""}
+
+    @app.post("/canvas/session")
+    async def canvas_session_save(body: dict):
+        """The desktop window sends the cookies of a Canvas sign in here. They
+        are checked against Canvas before anything is kept."""
+        from anexis.cli.setup import update_env_file
+        from anexis.tools.builtin import canvas
+
+        url = canvas.clean_url(str(body.get("url", "")))
+        local_test = os.environ.get("ANEXIS_CANVAS_ALLOW_LOCAL_HTTP") and canvas.urlhost(url) in ("127.0.0.1", "localhost")
+        if (not url.startswith("https://") and not local_test) or len(url) > 200:
+            raise HTTPException(400, "That is not a Canvas address. It starts with https://")
+        host = canvas.urlhost(url)
+        cookies = [
+            {"name": str(c["name"]), "value": str(c["value"]), "domain": str(c.get("domain") or host), "path": str(c.get("path") or "/")}
+            for c in body.get("cookies") or [] if isinstance(c, dict) and c.get("name") and c.get("value") is not None
+            # only cookies of the school's Canvas host, never anything else the login touched
+            and host.endswith(str(c.get("domain") or host).lstrip("."))
+        ]
+        if not cookies:
+            raise HTTPException(400, "The sign in came back with nothing to keep. Try again.")
+        client = canvas.Canvas(url, cookies=cookies, transport=canvas._transport)
+        try:
+            me = (await client.get("users/self"))[0]
+        except canvas.CanvasError as e:
+            raise HTTPException(400, f"That sign in did not work: {e}") from None
+        finally:
+            await client.http.aclose()  # a check only: nothing to save back yet
+        user = str(me.get("short_name") or me.get("name") or "") if isinstance(me, dict) else ""
+        canvas.write_private(canvas.session_path(settings), {"url": url, "user": user, "saved_at": time.time(), "cookies": cookies})
+        update_env_file(settings.home / ".env", {"CANVAS_URL": url})
+        return {"saved": True, "user": user, "url": url, "restart": True}
+
+    @app.delete("/canvas/session")
+    async def canvas_session_forget():
+        from anexis.tools.builtin import canvas
+
+        canvas.session_path(settings).unlink(missing_ok=True)
+        return {"forgotten": True, "restart": True}
 
     # ---- terminal ----------------------------------------------------------
     @app.websocket("/terminal")

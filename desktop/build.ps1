@@ -112,7 +112,7 @@ $global:LASTEXITCODE = 0
 foreach ($file in "pyproject.toml", "README.md", "anexis.toml.example", ".env.example") {
     Copy-Item -LiteralPath (Join-Path $Repo $file) -Destination $Source
 }
-foreach ($file in "frame.js", "seed.js") {
+foreach ($file in "frame.js", "preload.js", "seed.js") {
     Copy-Item -LiteralPath (Join-Path $Desktop $file) -Destination (Join-Path $Source "desktop")
 }
 Copy-Item -Recurse -LiteralPath (Join-Path $Desktop "assets") -Destination (Join-Path $Source "desktop\assets")

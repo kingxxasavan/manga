@@ -5,13 +5,13 @@
 // What it does not do: any of the assistant's work. That is all in the Python
 // code under anexis/, which this file only starts and stops.
 
-const { app, BrowserWindow, Menu, dialog, shell, session } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session } = require("electron");
 const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const BG = "#000000";
-let win = null, brain = null, deckUrl = "", quitting = false, lastLog = "";
+let win = null, brain = null, deckUrl = "", deckToken = "", quitting = false, lastLog = "";
 
 // ---- finding Python ------------------------------------------------------
 function pythonFor(context) {
@@ -84,6 +84,7 @@ function onBrainLine(line, context) {
   try { data = JSON.parse(body); } catch { lastLog = (lastLog + line + "\n").slice(-4000); return; }
   if (kind === "ANEXIS_READY") {
     deckUrl = data.url;
+    deckToken = data.token;
     win?.loadURL(`${data.url}/ui/#token=${encodeURIComponent(data.token)}`);
     afterReady(context);
   } else if (kind === "ANEXIS_STATE" && !deckUrl) {
@@ -107,6 +108,14 @@ function afterReady(context) {
       type: "warning", title: "Anexis",
       message: "The edited window code has a mistake, so the built in one is running.",
       detail: context.frameProblem,
+    });
+  }
+  // For smoke tests: ANEXIS_FRAME_CANVAS=<address> runs the Canvas sign in at
+  // once and prints how it went.
+  if (process.env.ANEXIS_FRAME_CANVAS) {
+    canvasSignIn(process.env.ANEXIS_FRAME_CANVAS).then((result) => {
+      console.log("ANEXIS_CANVAS " + JSON.stringify(result));
+      if (!process.env.ANEXIS_FRAME_SHOT) app.quit();
     });
   }
   // For smoke tests: ANEXIS_FRAME_SHOT=<file.png> saves a picture of the window and quits.
@@ -144,7 +153,10 @@ function createWindow(context) {
     width: 1500, height: 950, minWidth: 420, minHeight: 560,
     backgroundColor: BG, show: false, title: "Anexis", autoHideMenuBar: true,
     icon: path.join(__dirname, "assets", "icon.png"),
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
+    webPreferences: {
+      contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false,
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
   win.once("ready-to-show", () => win.show());
   win.on("closed", () => { win = null; });
@@ -169,6 +181,96 @@ function createWindow(context) {
   session.defaultSession.setPermissionCheckHandler((contents, permission, origin) =>
     ["media", "notifications"].includes(permission) && local(origin || contents?.getURL() || ""));
 }
+
+// ---- Canvas: sign in with the browser ------------------------------------
+// The school's own Canvas login opens in a window of its own. Anexis never
+// sees the username or password, only the signed in session afterwards, and
+// only the cookies of the Canvas site itself. The window keeps its own
+// storage, so the next sign in is often one click.
+
+const CANVAS = "persist:canvas";
+const GUARD = "while(1);";
+
+async function whoAmI(ses, base) {
+  try {
+    const resp = await ses.fetch(`${base}/api/v1/users/self`, { headers: { Accept: "application/json" }, redirect: "manual" });
+    if (resp.status !== 200) return null;
+    const text = (await resp.text()).trim();
+    const me = JSON.parse(text.startsWith(GUARD) ? text.slice(GUARD.length) : text);
+    return me && me.id ? me : null;
+  } catch {
+    return null;
+  }
+}
+
+function canvasSignIn(address) {
+  let base;
+  try {
+    const url = new URL(/^https?:\/\//i.test(address) ? address : `https://${address}`);
+    const testing = process.env.ANEXIS_CANVAS_ALLOW_LOCAL_HTTP && ["127.0.0.1", "localhost"].includes(url.hostname);
+    if (url.protocol !== "https:" && !testing) throw new Error("not https");
+    base = url.origin;
+  } catch {
+    return Promise.resolve({ ok: false, error: "That is not a Canvas address. It looks like https://yourschool.instructure.com" });
+  }
+  const ses = session.fromPartition(CANVAS);
+  return new Promise((resolve) => {
+    let done = false, checking = false;
+    const login = new BrowserWindow({
+      width: 980, height: 820, parent: win || undefined, title: "Sign in to Canvas", backgroundColor: "#ffffff", autoHideMenuBar: true,
+      webPreferences: { partition: CANVAS, contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    login.webContents.setWindowOpenHandler(({ url }) => {
+      login.loadURL(url);  // a school login that opens a new tab stays in this one window
+      return { action: "deny" };
+    });
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      clearInterval(timer);
+      clearTimeout(limit);
+      if (!login.isDestroyed()) login.close();
+      resolve(result);
+    };
+    const check = async () => {
+      if (done || checking) return;
+      checking = true;
+      try {
+        const me = await whoAmI(ses, base);
+        if (!me) return;
+        const cookies = (await ses.cookies.get({ url: base })).map((c) => ({ name: c.name, value: c.value, domain: c.domain, path: c.path }));
+        const resp = await fetch(`${deckUrl}/canvas/session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${deckToken}` },
+          body: JSON.stringify({ url: base, cookies }),
+        });
+        const reply = await resp.json().catch(() => ({}));
+        finish(resp.ok ? { ok: true, user: reply.user || me.short_name || me.name || "", url: base }
+                       : { ok: false, error: reply.detail || `Anexis said HTTP ${resp.status}` });
+      } catch (error) {
+        finish({ ok: false, error: `Could not finish the sign in: ${error.message}` });
+      } finally {
+        checking = false;
+      }
+    };
+    login.webContents.on("did-navigate", check);
+    login.webContents.on("did-navigate-in-page", check);
+    const timer = setInterval(check, 2500);
+    const limit = setTimeout(() => finish({ ok: false, error: "The sign in took longer than 15 minutes, so it was stopped." }), 15 * 60 * 1000);
+    login.on("closed", () => finish({ ok: false, error: "The sign in window was closed before it finished." }));
+    login.loadURL(`${base}/login`).catch(() => {
+      // Some schools send /login straight on to their own sign in page. A failed
+      // first load is only a problem when nothing loads at all.
+      setTimeout(() => { if (!done && login.webContents.getURL() === "") finish({ ok: false, error: `Could not open ${base}. Check the address.` }); }, 8000);
+    });
+  });
+}
+
+ipcMain.handle("canvas-sign-in", (event, address) => {
+  // Only the deck may ask, never a page that ended up in some other window.
+  if (!win || event.sender !== win.webContents || !local(event.senderFrame.url)) return { ok: false, error: "Not allowed from here." };
+  return canvasSignIn(address);
+});
 
 function menu(context) {
   const open = (target) => () => shell.openPath(target);

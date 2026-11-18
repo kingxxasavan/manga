@@ -1,9 +1,13 @@
 """Canvas, the school site: what is missing, what is coming up, and the files
 of every class.
 
-Needs two things in the keys: CANVAS_URL (your school's Canvas address) and
-CANVAS_TOKEN (made in Canvas under Account, Settings, New Access Token).
-The token can only read what you can see when you are logged in yourself.
+Two ways in, and neither one ever shows Anexis your password:
+  1. Sign in with the browser (the desktop app): your school's own Canvas login
+     page opens in a window, you sign in as always, and Anexis keeps that
+     signed in session in canvas_session.json in its home folder.
+  2. A token: CANVAS_URL and CANVAS_TOKEN in the keys (made in Canvas under
+     Account, Settings, New Access Token). Used first when both are there.
+Either one can only read what you can see when you are logged in yourself.
 
 Assignments are also copied into Anexis's own list (`sync`), so they show up
 under "due soon", in reminders and in every reply without asking Canvas again.
@@ -13,6 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import difflib
+import json
+import os
 import re
 import time
 from datetime import UTC, datetime, timedelta
@@ -26,8 +32,10 @@ SYNC_KEY = "canvas_items"         # canvas id -> item id, so nothing is added tw
 SYNCED_AT = "canvas_synced_at"
 SLIDES = (".pptx", ".ppt", ".pdf", ".key", ".odp", ".ppsx", ".pps")
 MAX_PAGES = 20
-NOT_SET = ("Error: Canvas is not set up. In the app open Keys and fill in the Canvas address "
-           "(like https://yourschool.instructure.com) and a Canvas token (in Canvas: Account, Settings, New Access Token).")
+NOT_SET = ("Error: Canvas is not set up. In the app open Keys, put in your school's Canvas address and press "
+           "Sign in with my browser. Or put in a Canvas token (in Canvas: Account, Settings, New Access Token).")
+SESSION_FILE = "canvas_session.json"
+GUARD = "while(1);"  # Canvas puts this in front of JSON it sends to a signed in browser session
 
 
 class CanvasError(Exception):
@@ -35,19 +43,35 @@ class CanvasError(Exception):
 
 
 class Canvas:
-    def __init__(self, url: str, token: str, transport: httpx.AsyncBaseTransport | None = None):
-        base = url.strip().rstrip("/")
-        if not base.startswith("http"):
-            base = "https://" + base
-        self.base = re.sub(r"/api/v1$", "", base)
+    def __init__(self, url: str, token: str = "", transport: httpx.AsyncBaseTransport | None = None,
+                 cookies: list[dict] | None = None, session_path: Path | None = None):
+        self.base = clean_url(url)
         self._transport = transport  # only ever set by tests
+        self.via = "token" if token else "session"
+        self._session_path = session_path
+        jar = httpx.Cookies()
+        for c in cookies or []:
+            jar.set(str(c["name"]), str(c["value"]), domain=str(c.get("domain") or urlhost(self.base)), path=str(c.get("path") or "/"))
         self.http = httpx.AsyncClient(
-            base_url=self.base, headers={"Authorization": f"Bearer {token.strip()}"},
-            timeout=httpx.Timeout(40, connect=10), transport=transport, follow_redirects=True,
+            base_url=self.base, headers={"Authorization": f"Bearer {token.strip()}"} if token else {"Accept": "application/json"},
+            cookies=jar, timeout=httpx.Timeout(40, connect=10), transport=transport, follow_redirects=True,
         )
 
     async def close(self) -> None:
+        # Canvas renews the session as it is used. Keep the newest copy, so it lasts.
+        if self.via == "session" and self._session_path and self._session_path.is_file():
+            try:
+                saved = json.loads(self._session_path.read_text(encoding="utf-8"))
+                saved["cookies"] = [{"name": c.name, "value": c.value, "domain": c.domain, "path": c.path} for c in self.http.cookies.jar]
+                write_private(self._session_path, saved)
+            except (OSError, ValueError):
+                pass
         await self.http.aclose()
+
+    def signed_out(self) -> CanvasError:
+        if self.via == "token":
+            return CanvasError("Canvas refused the token. Make a new one in Canvas (Account, Settings, New Access Token) and put it in Keys.")
+        return CanvasError("Your Canvas sign in ran out. In the app open Keys and press Sign in with my browser again.")
 
     async def get(self, path: str, **query) -> list:
         """Every row of a listing, following Canvas's "next page" links."""
@@ -62,14 +86,17 @@ class Canvas:
                 resp = await self.http.get(url, params=pairs or None)
             except httpx.HTTPError as e:
                 raise CanvasError(f"Could not reach Canvas at {self.base} ({type(e).__name__}). Check the Canvas address in Keys.") from e
-            if resp.status_code == 401:
-                raise CanvasError("Canvas refused the token. Make a new one in Canvas (Account, Settings, New Access Token) and put it in Keys.")
+            # A session that ran out comes back as 401, or as a bounce to the login page.
+            # (/login, /login/canvas, /login/saml... depending on the school)
+            if resp.status_code == 401 or re.match(r"/login(/|$)", resp.url.path):
+                raise self.signed_out()
             if resp.status_code in (403, 404):
                 raise CanvasError(f"Canvas would not show that (HTTP {resp.status_code}). The class may hide it from students.")
             if resp.status_code >= 400:
                 raise CanvasError(f"Canvas answered HTTP {resp.status_code}: {resp.text[:200]}")
             try:
-                data = resp.json()
+                body = resp.text.lstrip()
+                data = json.loads(body[len(GUARD):] if body.startswith(GUARD) else body)
             except ValueError:
                 raise CanvasError(f"{self.base} did not answer like Canvas. Check the Canvas address in Keys.") from None
             rows += data if isinstance(data, list) else [data]
@@ -140,8 +167,10 @@ class Canvas:
         part = target.with_name(target.name + ".part")
         try:
             # The download link carries its own pass, and may live on another host.
+            # The same cookies go along, but only to the school's Canvas host:
+            # httpx sends a cookie only where its domain matches.
             async with httpx.AsyncClient(follow_redirects=True, timeout=httpx.Timeout(300, connect=10),
-                                         transport=self._transport) as plain, plain.stream("GET", file["url"]) as resp:
+                                         cookies=self.http.cookies, transport=self._transport) as plain, plain.stream("GET", file["url"]) as resp:
                 if resp.status_code >= 400:
                     raise CanvasError(f"Could not download {file['name']} (HTTP {resp.status_code})")
                 with part.open("wb") as out:
@@ -183,9 +212,55 @@ def _file(f: dict) -> dict:
             "size": f.get("size") or 0, "url": f["url"], "updated": _local(f.get("updated_at")) or ""}
 
 
+def clean_url(url: str) -> str:
+    base = str(url).strip().rstrip("/")
+    if not base.startswith(("https://", "http://")):
+        base = "https://" + base
+    return re.sub(r"/api/v1$", "", base)
+
+
+def urlhost(url: str) -> str:
+    return httpx.URL(clean_url(url)).host
+
+
+def write_private(path: Path, data: dict) -> None:
+    """The session is as good as being signed in, so only the owner may read it."""
+    from anexis.platform import private_file
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    private_file(tmp)
+    tmp.replace(path)
+
+
+def session_path(settings) -> Path:
+    return settings.home / SESSION_FILE
+
+
+def load_session(settings) -> dict | None:
+    try:
+        data = json.loads(session_path(settings).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and data.get("url") and data.get("cookies") else None
+
+
+def configured(settings) -> bool:
+    return bool(settings.env.get("CANVAS_URL") and settings.env.get("CANVAS_TOKEN")) or load_session(settings) is not None
+
+
 def client_for(settings, transport=None) -> Canvas | None:
+    """A Canvas client from the token if there is one, else from the browser sign in."""
     url, token = settings.env.get("CANVAS_URL", ""), settings.env.get("CANVAS_TOKEN", "")
-    return Canvas(url, token, transport) if url and token else None
+    if url and token:
+        return Canvas(url, token, transport)
+    session = load_session(settings)
+    if session:
+        return Canvas(session["url"], cookies=session["cookies"], transport=transport, session_path=session_path(settings))
+    return None
 
 
 _transport = None  # tests put a stand in for the Canvas website here

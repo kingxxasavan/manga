@@ -9,6 +9,7 @@ version for each one, and npx or uvx fetches exactly that version on the server.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -106,9 +107,62 @@ def tool_path() -> str:
     return os.pathsep.join(p for p in parts if p)
 
 
+def npm_dir(spec: ServerSpec, settings: Settings) -> Path:
+    """Where one npm tool server is installed, one folder per pinned version."""
+    safe = re.sub(r"[^a-zA-Z0-9._-]+", "_", f"{spec.package}@{spec.version}")
+    return settings.home / "tool-servers" / safe
+
+
+def npm_entry(spec: ServerSpec, settings: Settings) -> Path | None:
+    """The script an installed npm server starts from, or None when it is not
+    installed yet. Read from the package's own bin field."""
+    pkg = npm_dir(spec, settings) / "node_modules" / Path(*spec.package.split("/"))
+    try:
+        meta = json.loads((pkg / "package.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    bins = meta.get("bin")
+    if isinstance(bins, str):
+        rel = bins
+    elif isinstance(bins, dict) and bins:
+        rel = bins.get(spec.bin) or bins.get(spec.package.split("/")[-1]) or next(iter(bins.values()))
+    else:
+        rel = meta.get("main")
+    entry = (pkg / rel).resolve() if rel else None
+    return entry if entry and entry.is_file() else None
+
+
+async def npm_install(spec: ServerSpec, settings: Settings, log) -> Path | None:
+    """Installs one npm server into its own folder, once. Running it from there
+    afterwards needs no download, which is what makes starting reliable: npx
+    downloading several servers at once fights over one cache on Windows."""
+    entry = npm_entry(spec, settings)
+    if entry:
+        return entry
+    from anexis.platform import find_program
+    from anexis.tools.builtin.system import run_process
+
+    folder = npm_dir(spec, settings)
+    folder.mkdir(parents=True, exist_ok=True)
+    npm = find_program("npm", tool_path())
+    env = {**os.environ, "PATH": tool_path(), "npm_config_update_notifier": "false", "npm_config_fund": "false"}
+    code, output = await run_process(
+        [npm, "install", "--prefix", str(folder), "--no-audit", "--no-fund", "--omit=dev", "--loglevel=error",
+         f"{spec.package}@{spec.version}"], folder, 600, env=env)
+    log.write(output)
+    log.flush()
+    if code != 0:
+        raise RuntimeError(f"npm could not install {spec.package}@{spec.version}: {(output.strip().splitlines() or ['no output'])[-1][:200]}")
+    return npm_entry(spec, settings)
+
+
 def launch_command(spec: ServerSpec, settings: Settings) -> list[str]:
     args = [_fill(str(a), settings) for a in spec.args]
     if spec.type == "npm":
+        entry = npm_entry(spec, settings)
+        if entry:  # installed: start it straight with node, no npx
+            node = shutil.which("node", path=tool_path()) or "node"
+            return [node, str(entry), *args]
         npx = shutil.which("npx", path=tool_path()) or "npx"
         return [npx, "-y", f"{spec.package}@{spec.version}", *args]
     if spec.type == "pypi":
@@ -150,6 +204,7 @@ class MCPManager:
         # to the same npm cache, and on Windows they knock each other over.
         self._one_at_a_time = {"npm": asyncio.Lock()}
         self.log_dir = settings.home / "tool-logs"
+        self.install_npm = True  # tests that stand in for npm turn this off
 
     async def start(self, only: set[str] | None = None) -> None:
         """Start every usable server at once and wait until each is up or failed."""
@@ -249,6 +304,11 @@ class MCPManager:
             # What the server prints to its error stream is kept, so a failed
             # start can be explained instead of just reported.
             with open(self._log_path(spec.name), "w", encoding="utf-8") as said:
+                if spec.type == "npm" and self.install_npm:
+                    try:
+                        await npm_install(spec, self.settings, said)
+                    except (OSError, RuntimeError) as e:
+                        said.write(f"\n{e}\n")  # npx below is the fallback
                 connection = self._connection(spec)
                 if isinstance(connection, StdioServerParameters):
                     from mcp import stdio_client

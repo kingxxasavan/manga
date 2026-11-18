@@ -19,7 +19,7 @@
     "appId": "dev.anexis.desktop",
     "productName": "Anexis",
     "directories": { "output": "dist", "buildResources": "assets" },
-    "files": ["bootstrap.js", "frame.js", "seed.js", "assets/icon.png", "package.json"],
+    "files": ["bootstrap.js", "frame.js", "preload.js", "seed.js", "assets/icon.png", "package.json"],
     "extraResources": [
       { "from": "stage/runtime", "to": "runtime" },
       { "from": "stage/source", "to": "source" }

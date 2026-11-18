@@ -272,7 +272,10 @@ try {
   await step("the keys screen shows how Claude is signed in and the switch to a cheaper model", async () => {
     await page.click('[data-open="keys"]');
     await page.waitForSelector(".keyrow");
-    assert.match(await page.locator(".sheet-body").innerText(), /Canvas: assignments and class files/);
+    assert.match(await page.locator(".sheet-body").innerText(), /never sees your username or password/);
+    // In a plain browser there is no app window to open the Canvas login, so it says to use a token.
+    assert.equal(await page.locator('button:has-text("Sign in with my browser")').isDisabled(), true);
+    assert.equal(await page.locator('.prov input[aria-label="Canvas address"]').inputValue(), "https://school.example");
     assert.match(await page.locator(".sheet-body").innerText(), /CLAUDE FOR CODE/);
     await shot("10c-keys");
     await page.keyboard.press("Escape");

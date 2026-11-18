@@ -10,7 +10,7 @@ def register_builtin(registry: Registry, settings=None) -> None:
             registry.add(tool)
     for tool in desktop.tools():
         registry.add(tool)
-    # The Canvas tools only make sense once the owner has given a Canvas token.
-    if settings is not None and settings.env.get("CANVAS_TOKEN"):
+    # The Canvas tools only make sense once the owner signed in to Canvas.
+    if settings is not None and canvas.configured(settings):
         for tool in canvas.TOOLS:
             registry.add(tool)

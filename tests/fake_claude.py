@@ -16,6 +16,11 @@ if sys.argv[1:3] == ["auth", "status"]:
 if "/usage" in sys.argv:
     percent = os.environ.get("FAKE_CLAUDE_USAGE")
     print(json.dumps({"type": "system", "subtype": "init", "session_id": "abc"}))
+    text_percent = os.environ.get("FAKE_CLAUDE_USAGE_TEXT")
+    if text_percent is not None:  # what this Claude Code version really prints: plain text
+        report = (f"Current session\n  ██████      {text_percent}% used\n  Resets 5pm\n\n"
+                  "Current week (all models)\n  ██          12% used\n\nCurrent week (Opus)\n  █████████   99% used\n")
+        print(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": report}]}}))
     if percent is not None:
         report = {"session": {"total_cost_usd": 0}, "rate_limits": {"limits": [
             {"kind": "session", "group": "session", "percent": float(percent), "resets_at": None, "severity": "ok", "is_active": True},
@@ -38,6 +43,9 @@ def envelope(result, is_error=False, subtype="success"):
 
 
 reset = int(time.time()) + 3600
+noted = os.environ.get("FAKE_CLAUDE_RUN_UTILIZATION")
+if noted is not None:  # the usage note Claude Code sends while it works
+    print(json.dumps({"type": "rate_limit_event", "rate_limit_info": {"status": "allowed_warning", "utilization": float(noted), "resetsAt": reset}}))
 if mode == "ok":
     open("hello.py", "w").write("print('hi from claude')\n")
     envelope("Created hello.py which prints a greeting.")

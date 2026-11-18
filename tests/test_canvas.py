@@ -34,8 +34,24 @@ class School:
         self.asked.append(path)
         if request.url.host == "files.test":
             return httpx.Response(200, content=b"slide-bytes-" + path.encode())
-        if request.headers.get("authorization") != "Bearer good-token":
+        if path.startswith("/login"):
+            return httpx.Response(200, text="<html>log in</html>", headers={"content-type": "text/html"})
+        signed_in = request.headers.get("authorization") == "Bearer good-token"
+        by_cookie = "canvas_session=good-session" in request.headers.get("cookie", "") or "canvas_session=renewed" in request.headers.get("cookie", "")
+        if not (signed_in or by_cookie):
+            if request.headers.get("cookie"):  # a browser session that ran out is sent to the login page
+                return httpx.Response(302, headers={"Location": "https://school.test/login/canvas"})
             return httpx.Response(401, json={"errors": [{"message": "Invalid access token."}]})
+        reply = self.route(request, path)
+        if by_cookie and not signed_in and reply.headers.get("content-type", "").startswith("application/json"):
+            # What Canvas does for a signed in browser: a guard in front of the JSON, and a renewed session.
+            reply = httpx.Response(reply.status_code, content=b"while(1);" + reply.content,
+                                   headers={**dict(reply.headers), "set-cookie": "canvas_session=renewed; Path=/; Domain=school.test"})
+        return reply
+
+    def route(self, request: httpx.Request, path: str) -> httpx.Response:
+        if path == "/api/v1/users/self":
+            return httpx.Response(200, json={"id": 7, "name": "Sam Student", "short_name": "Sam"})
         if path == "/api/v1/courses":
             if request.url.params.get("page") == "2":
                 return httpx.Response(200, json=[{"id": 2, "name": "History: 1900 to now", "course_code": "HIST200"}])
@@ -147,7 +163,7 @@ def test_the_canvas_tools_only_appear_once_there_is_a_token(settings):
 
     without, with_token = Registry(), Registry()
     register_builtin(without, settings)
-    settings.env = {"CANVAS_TOKEN": "x"}
+    settings.env = {"CANVAS_URL": "school.test", "CANVAS_TOKEN": "x"}
     register_builtin(with_token, settings)
     assert without.get("canvas_missing") is None and with_token.get("canvas_download") is not None
 
@@ -165,3 +181,84 @@ def test_a_token_and_address_can_be_saved_from_setup(settings):
     assert key_warning("CANVAS_URL", "https://school.instructure.com") == ""
     assert "https://" in key_warning("CANVAS_URL", "school.instructure.com")
     assert json.dumps(by_env["CANVAS_TOKEN"].get_it)
+
+
+# ---- signing in with the browser instead of a token -------------------------
+
+SESSION = [{"name": "canvas_session", "value": "good-session", "domain": "school.test", "path": "/"},
+           {"name": "_csrf_token", "value": "abc", "domain": "school.test", "path": "/"}]
+
+
+def signed_in(settings, cookies=SESSION):
+    canvas.write_private(canvas.session_path(settings), {"url": "https://school.test", "user": "Sam", "cookies": cookies})
+
+
+async def test_a_browser_sign_in_works_like_a_token(school, ctx, settings, memory):
+    settings.env = {}
+    signed_in(settings)
+    assert canvas.configured(settings)
+    assert "Chemistry 101 (id 1, CHEM101)" in await canvas.canvas_courses({}, ctx)   # the while(1); guard is taken off
+    assert "Lab 3 writeup" in await canvas.canvas_missing({}, ctx)
+    said = await canvas.canvas_download({"course": "chem"}, ctx)
+    assert "Downloaded 2 new slides" in said
+
+
+async def test_a_renewed_session_is_kept_so_the_sign_in_lasts(school, ctx, settings):
+    settings.env = {}
+    signed_in(settings)
+    await canvas.canvas_courses({}, ctx)
+    kept = canvas.load_session(settings)["cookies"]
+    assert {c["name"]: c["value"] for c in kept}["canvas_session"] == "renewed"
+    assert "Chemistry" in await canvas.canvas_courses({}, ctx)                      # and the renewed one works
+
+
+async def test_a_session_that_ran_out_says_to_sign_in_again(school, ctx, settings):
+    settings.env = {}
+    signed_in(settings, [{"name": "canvas_session", "value": "expired", "domain": "school.test", "path": "/"}])
+    said = await canvas.canvas_missing({}, ctx)
+    assert "sign in ran out" in said and "Sign in with my browser" in said
+
+
+def test_a_token_wins_over_a_browser_sign_in_and_nothing_means_not_set_up(settings):
+    assert not canvas.configured(settings) and canvas.client_for(settings) is None
+    signed_in(settings)
+    assert canvas.client_for(settings).via == "session"
+    settings.env = {"CANVAS_URL": "school.test", "CANVAS_TOKEN": "t"}
+    assert canvas.client_for(settings).via == "token"
+
+
+def test_the_session_file_is_private(settings):
+    import os
+    import stat
+
+    signed_in(settings)
+    if os.name != "nt":
+        assert stat.S_IMODE(canvas.session_path(settings).stat().st_mode) == 0o600
+
+
+async def test_the_window_hands_over_a_sign_in_and_only_canvas_cookies_are_kept(live, settings, school):
+    import httpx as http_lib
+
+    from anexis.config import read_dotenv
+
+    settings.env = {}
+    _, client = await live()
+    async with http_lib.AsyncClient(base_url=client.url) as http:
+        assert (await http.get("/canvas")).json()["method"] == "none"
+        cookies = [*SESSION, {"name": "idp", "value": "secret", "domain": "login.microsoftonline.com", "path": "/"}]
+        reply = await http.post("/canvas/session", json={"url": "https://school.test/", "cookies": cookies})
+        assert reply.status_code == 200 and reply.json()["user"] == "Sam" and reply.json()["restart"]
+        state = (await http.get("/canvas")).json()
+        assert state == {"method": "session", "url": "https://school.test", "user": "Sam", "saved_at": state["saved_at"]}
+        kept = canvas.load_session(settings)["cookies"]
+        assert {c["name"] for c in kept} == {"canvas_session", "_csrf_token"}       # the school login's own cookie is dropped
+        assert read_dotenv(settings.home / ".env")["CANVAS_URL"] == "https://school.test"
+
+        bad = await http.post("/canvas/session", json={"url": "https://school.test", "cookies": [{"name": "canvas_session", "value": "nope"}]})
+        assert bad.status_code == 400 and "did not work" in bad.json()["detail"]
+        assert (await http.post("/canvas/session", json={"url": "http://school.test", "cookies": SESSION})).status_code == 400
+        assert (await http.post("/canvas/session", json={"url": "https://school.test", "cookies": []})).status_code == 400
+        assert canvas.load_session(settings)["user"] == "Sam"                      # a failed try never replaces a good one
+
+        assert (await http.delete("/canvas/session")).json()["forgotten"]
+        assert canvas.load_session(settings) is None

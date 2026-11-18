@@ -49,7 +49,7 @@ foreach ($file in "pyproject.toml", "README.md", "anexis.toml.example", ".env.ex
     Copy-Item -Force -LiteralPath (Join-Path $Repo $file) -Destination $Live
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $Live "desktop\assets") | Out-Null
-foreach ($file in "frame.js", "seed.js") {
+foreach ($file in "frame.js", "preload.js", "seed.js") {
     Copy-Item -Force -LiteralPath (Join-Path $Desktop $file) -Destination (Join-Path $Live "desktop")
 }
 Copy-Item -Force -Path (Join-Path $Desktop "assets\*") -Destination (Join-Path $Live "desktop\assets")

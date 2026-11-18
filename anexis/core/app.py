@@ -63,7 +63,9 @@ class AnexisApp:
             self._tasks.append(asyncio.create_task(self._upkeep()))
         if self.settings.ui_dir.is_dir():
             self._tasks.append(asyncio.create_task(self._watch_deck()))
-        if self.settings.env.get("CANVAS_TOKEN") and self.settings.env.get("CANVAS_URL"):
+        from anexis.tools.builtin import canvas as canvas_tools
+
+        if canvas_tools.configured(self.settings):
             self._tasks.append(asyncio.create_task(self._canvas()))
 
     async def _canvas(self) -> None:
@@ -75,6 +77,8 @@ class AnexisApp:
         await asyncio.sleep(5)
         while True:
             client = canvas.client_for(self.settings, canvas._transport)
+            if client is None:  # signed out since this started
+                return
             try:
                 report = await canvas.sync(self.memory, client)
                 self.memory.log("canvas_sync", report)
