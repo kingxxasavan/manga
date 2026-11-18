@@ -587,3 +587,83 @@ small.bad { color: var(--bad); }
   *, *::before, *::after { animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
   .fx { display: none; }
 }
+
+/* ---- JARVIS voice screen (js/orb.js) --------------------------------------
+   Black, one circle in the middle. Dark while nobody talks, lit blue by the
+   voice that is talking. Always blue, whatever the deck theme is. */
+.orb {
+  --orb-blue: #3aa8ff;
+  --orb-ice: #bfe4ff;
+  --orb-deep: #0c2236;
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center; align-content: center; gap: 28px;
+  padding: 16px; background: #000; color: var(--orb-ice);
+  font-family: var(--display); text-align: center;
+}
+.orb[hidden] { display: none; }
+.orb-back {
+  position: absolute; top: 16px; right: 16px;
+  font: 500 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+  color: #4d6a80; padding: 8px 12px; border: 1px solid #13293a;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .orb-back:hover { color: var(--orb-ice); border-color: var(--orb-blue); }
+}
+.orb-stage { position: relative; width: min(56vmin, 380px); aspect-ratio: 1; display: grid; place-items: center; }
+/* The light: a soft blue halo behind the ring. JS sets its opacity and scale
+   straight on the element from the voice level. */
+.orb-glow {
+  position: absolute; inset: -18%; border-radius: 50%; opacity: 0; transform: scale(0.92);
+  background: radial-gradient(circle, rgba(58, 168, 255, .55) 0%, rgba(58, 168, 255, .22) 38%, rgba(58, 168, 255, 0) 68%);
+  pointer-events: none; will-change: transform, opacity;
+}
+.orb-ring {
+  --lit: 0;
+  position: relative; width: 100%; height: 100%; border-radius: 50%;
+  display: grid; place-items: center; background: #000;
+  border: 2px solid var(--orb-deep);
+  box-shadow: inset 0 0 calc(60px * var(--lit)) rgba(58, 168, 255, calc(.5 * var(--lit)));
+  transition: border-color 220ms var(--ease-out);
+}
+.orb-name {
+  font-weight: 600; font-size: clamp(22px, 6vmin, 40px); letter-spacing: .32em; padding-left: .32em;
+  color: #24445c; transition: color 220ms var(--ease-out);
+}
+/* Awake: the ring and the name light up, the halo follows the voice. */
+.orb[data-state="listening"] .orb-ring,
+.orb[data-state="speaking"] .orb-ring { border-color: var(--orb-blue); }
+.orb[data-state="listening"] .orb-name,
+.orb[data-state="speaking"] .orb-name { color: var(--orb-ice); }
+/* Thinking: nobody talks, so no light, just a slow breath on the ring. */
+.orb[data-state="thinking"] .orb-ring { border-color: #1d5a86; animation: orb-breathe 1.8s ease-in-out infinite; }
+.orb[data-state="thinking"] .orb-name { color: #6aa9d6; }
+@keyframes orb-breathe { 50% { border-color: #2f86c4; } }
+.orb-status { font: 500 12px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: #4d6a80; }
+.orb[data-state="listening"] .orb-status,
+.orb[data-state="speaking"] .orb-status { color: var(--orb-blue); }
+.orb-lines { width: min(680px, 100%); min-height: 4.5em; display: grid; gap: 10px; }
+.orb-lines p { margin: 0; overflow-wrap: anywhere; }
+.orb-you { font: 400 14px/1.5 var(--mono); color: #5f7f96; }
+.orb-you:not(:empty)::before { content: "you: "; color: #34516a; }
+.orb-him { font: 500 17px/1.5 var(--display); color: var(--orb-ice); max-height: 30vh; overflow: auto; }
+.orb-ask {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center;
+  width: min(680px, 100%); padding: 12px 14px; border: 1px solid var(--orb-blue);
+  font: 400 13px/1.5 var(--mono);
+}
+.orb-ask[hidden] { display: none; }
+.orb-ask-buttons { display: inline-flex; gap: 8px; }
+.orb-ask button {
+  font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+  padding: 8px 12px; border: 1px solid var(--orb-blue); color: var(--orb-ice);
+  transition: background-color 150ms ease, transform 140ms var(--ease-out);
+}
+.orb-ask button:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) {
+  .orb-ask button:hover { background-color: rgba(58, 168, 255, .16); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orb-glow { transform: none !important; }   /* the light still shows, it just does not grow */
+  .orb[data-state="thinking"] .orb-ring { animation: none; border-color: #2f86c4; }
+}

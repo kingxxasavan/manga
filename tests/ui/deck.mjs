@@ -402,6 +402,45 @@ try {
     await shot("14-deck");
   });
 
+  await step("the JARVIS voice screen: dark when quiet, lit blue by the voice talking", async () => {
+    // The voice events come from the engine on a real PC; here they go straight to the screen.
+    const voice = (event) => page.evaluate(async (e) => (await import("./js/orb.js")).onEvent(e), event);
+    const glow = () => page.evaluate(() => Number(getComputedStyle(document.querySelector(".orb-glow")).opacity));
+    await voice({ type: "wake" });
+    await page.waitForSelector("#orb:not([hidden])");
+    assert.equal(await page.locator(".orb-name").innerText(), "JARVIS");
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".orb")).backgroundColor), "rgb(0, 0, 0)");
+    await voice({ type: "voice_levels", mic: 0.2, out: 0 });   // talking, but JARVIS is not listening yet
+    await page.waitForTimeout(250);
+    assert.equal(await glow(), 0, "lit up while nobody was talking to it");
+    await shot("15-jarvis-quiet");
+    await voice({ type: "voice_state", value: "listening" });
+    await voice({ type: "voice_user", text: "what is due this week" });
+    await voice({ type: "voice_levels", mic: 0.08, out: 0 });
+    await until("the circle to light up", async () => (await glow()) > 0.5, 5);
+    await shot("16-jarvis-listening");
+    await voice({ type: "voice_levels", mic: 0.0005, out: 0 });  // you stopped talking
+    await until("the circle to go dark", async () => (await glow()) < 0.05, 5);
+    await voice({ type: "voice_state", value: "speaking" });
+    await voice({ type: "voice_reply", text: "Two things, sir. The lab report on Thursday and the reading quiz." });
+    await voice({ type: "voice_levels", mic: 0, out: 0.1 });
+    await until("its own voice to light it", async () => (await glow()) > 0.5, 5);
+    assert.match(await page.locator(".orb-him").innerText(), /lab report/);
+    await shot("17-jarvis-speaking");
+    await voice({ type: "voice_approval", id: "a1", tool: "run_shell" });
+    await page.waitForSelector(".orb-ask:not([hidden]) >> text=go ahead");
+    await voice({ type: "voice_approval_done", id: "a1" });
+    await page.waitForSelector(".orb-ask", { state: "hidden" });
+    await voice({ type: "voice_state", value: "idle" });
+    await until("the circle to go dark", async () => (await glow()) < 0.05, 5);
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#orb", { state: "hidden" });
+    await page.click("#jarvis");
+    await page.waitForSelector("#orb:not([hidden])");
+    await page.click(".orb-back");
+    await page.waitForSelector("#orb", { state: "hidden" });
+  });
+
   await step("nothing was logged as an error along the way", async () => {
     // The brain restarts in this run on purpose, and a request in flight at that
     // moment fails. Those are expected. Anything else is a bug.

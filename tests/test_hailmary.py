@@ -274,3 +274,18 @@ async def test_an_answer_without_the_name_does_not_approve(settings):
     await asyncio.sleep(0.3)
     assert not (settings.workspace / "nope.txt").exists()
     anexis.stop_wake()
+
+
+async def test_voice_levels_reach_the_deck_ten_times_a_second():
+    import asyncio
+
+    from anexis.voice.hailmary.bus import Bus
+
+    got: list[dict] = []
+    bus = Bus()
+    bus.bind(asyncio.get_running_loop(), got.append)
+    for _ in range(5):  # twenty a second from the audio thread, all at once here
+        bus.publish("levels", mic=0.123456789, out=0.0)
+    bus.publish("state", value="listening")
+    assert [e["type"] for e in got] == ["voice_levels", "voice_state"]
+    assert got[0]["mic"] == 0.12346

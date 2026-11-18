@@ -137,6 +137,12 @@ The voice is the JARVIS voice from Hail Mary, moved in here
 say "Jarvis" and talk. The window comes back, it answers out loud, and you can
 talk over it to cut it off. It works with the window hidden in the tray.
 
+When you say "Jarvis" the window turns into the JARVIS screen: black, with one
+circle in the middle. It stays dark while nobody is talking, and lights up blue
+with your voice while it listens and with its own voice while it answers. After
+20 seconds of quiet the deck comes back (or press Esc). The **jarvis** button at
+the top opens it any time.
+
 How it listens (`voice_attention` in anexis.toml):
 
 * **smart** (default): it answers when you say "Jarvis", and keeps listening a

@@ -8,6 +8,7 @@ import { $, $$, h, notify, showWindow, toast } from "./dom.js";
 import * as files from "./files.js";
 import { initKeyboard } from "./keyboard.js";
 import * as memory from "./memory.js";
+import * as orb from "./orb.js";
 import * as overlays from "./overlays.js";
 import { openSetup } from "./setup.js";
 import { initStats } from "./stats.js";
@@ -246,29 +247,35 @@ function onEvent(event) {
     // Anexis started something on its own: a heads up, a question, an offer, or work it did.
     const label = { say: "heads up", ask: "a question", offer: "can I do this?", did: "done on its own" }[event.action] || "";
     notify(`${name}: ${label}`, event.text);
-    voice.speak(event.text);
+    if (!voiceState) voice.speak(event.text);
     $("#chat-list").classList.add("alert");
     if (chat.state.sessionId === "inbox") chat.openConversation("inbox");
   }
   else if (event.type === "task_done") notify(`${name}: done`, event.text || "Finished what you asked.");
-  else if (event.type === "wake") { showWindow(); toast("Listening..."); }
-  else if (event.type === "voice_heard") toast(event.text ? `Heard: ${event.text}` : "Did not catch that.");
+  else if (event.type === "wake") { showWindow(); orb.onEvent(event); }
+  else if (event.type === "voice_heard") {
+    orb.onEvent(event);
+    // The Hail Mary voice says whether it was talked to; chatter it ignored is not shown.
+    if (!orb.isOpen() && event.directed !== false) toast(event.text ? `Heard: ${event.text}` : "Did not catch that.");
+  }
   else if (event.type === "voice_reply") {
+    orb.onEvent(event);
     if (chat.state.sessionId === "voice") chat.openConversation("voice");
-    else toast(`${name}: ${event.text.slice(0, 200)}`);
+    else if (!orb.isOpen()) toast(`${name}: ${event.text.slice(0, 200)}`);
   }
   else if (event.type === "wake_failed") toast(`Voice: ${event.error}`, "bad");
   // The Hail Mary JARVIS voice
-  else if (event.type === "voice_heard") { if (event.directed) toast(`Heard: ${event.text}`); }
-  else if (event.type === "voice_state") { voiceState = event.value; drawBrain(); }
+  else if (event.type === "voice_state") { voiceState = event.value; drawBrain(); orb.onEvent(event); }
+  else if (["voice_levels", "voice_user", "voice_assistant_delta"].includes(event.type)) orb.onEvent(event);
   else if (event.type === "voice_error") toast(`Voice: ${event.message}`, "bad");
   else if (event.type === "voice_approval") {
     showWindow();
+    orb.onEvent(event);
     const answerIt = async (approved) => { banner(""); try { await api.post("/voice/approval", { id: event.id, approved }); } catch (e) { toast(e.message, "bad"); } };
     banner(`JARVIS asks: may I use ${(event.tool || "a tool").replace(/_/g, " ")}? Say "Jarvis, go ahead" or "Jarvis, cancel", or click.`, "",
       h("span", h("button", { type: "button", onclick: () => answerIt(true) }, "go ahead"), "  ", h("button", { type: "button", onclick: () => answerIt(false) }, "cancel")));
   }
-  else if (event.type === "voice_approval_done") banner("");
+  else if (event.type === "voice_approval_done") { banner(""); orb.onEvent(event); }
   else if (event.type === "canvas_failed") toast(`Canvas could not be reached: ${event.error}`, "bad");
   else if (event.type === "brain_restarting") toast(`Code changed (${event.files.join(", ")}). Restarting the brain.`);
   else if (event.type === "brain_error") {
@@ -419,6 +426,7 @@ async function start() {
   setInterval(() => !document.hidden && pulseClaude(), 120_000);
 
   $("#control").addEventListener("click", controlSheet);
+  $("#jarvis").addEventListener("click", () => orb.open(true));
   $("#chat-new").addEventListener("click", () => { chat.newConversation(); $("#input").focus(); });
   $("#chat-clear").addEventListener("click", (e) => chat.clearConversation(e.currentTarget));
   $("#chat-list").addEventListener("click", openChats);
@@ -428,7 +436,8 @@ async function start() {
   for (const button of $$(".views button")) button.addEventListener("click", () => show(button.dataset.view));
   addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if (overlays.sheetOpen()) overlays.closeSheet();
+    if (orb.isOpen()) orb.close();
+    else if (overlays.sheetOpen()) overlays.closeSheet();
     else if (chat.state.busy) chat.stop();
     voice.hush();
   });
