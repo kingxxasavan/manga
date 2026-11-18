@@ -126,6 +126,27 @@ async function claudeBlock(hooks) {
     h("small", "0 turns the switch off. The model before the switch is Claude's own best one."));
 }
 
+/** The Canvas sign in when the window's bridge (preload.js) did not load:
+ *  ask the window through a special link instead. An older window does not
+ *  know that link, which is said plainly after a few seconds. */
+function signInWithoutBridge(url) {
+  return new Promise((resolve) => {
+    let started = false;
+    const listen = (event) => {
+      if (event.detail.started) { started = true; return; }
+      removeEventListener("anexis-canvas", listen);
+      resolve(event.detail);
+    };
+    addEventListener("anexis-canvas", listen);
+    window.open(`about:blank#anexis-canvas=${encodeURIComponent(url)}`);
+    setTimeout(() => {
+      if (started) return;
+      removeEventListener("anexis-canvas", listen);
+      resolve({ ok: false, error: "The Anexis window is still the old one. Quit Anexis completely (Ctrl+Q) and open it again. If this keeps showing, run update.ps1 again." });
+    }, 4000);
+  });
+}
+
 /** Canvas through the school's own login page: no password goes through
  *  Anexis and no token has to be made by hand. Only the desktop app can open
  *  that login window, so in a plain browser the token boxes below are the way. */
@@ -137,14 +158,15 @@ async function canvasBlock() {
     : state.method === "token" ? "Using a Canvas token from the keys below." : "Not signed in yet.");
   if (state.method !== "none") said.className = "ok";
   const app = window.anexisFrame;
-  const go = h("button.btn.primary", { type: "button", disabled: !app }, state.method === "session" ? "Sign in again" : "Sign in with my browser");
+  const inApp = Boolean(app) || /Electron\//.test(navigator.userAgent);
+  const go = h("button.btn.primary", { type: "button", disabled: !inApp }, state.method === "session" ? "Sign in again" : "Sign in with my browser");
   go.onclick = async () => {
     const url = address.value.trim();
     if (!url) { said.className = "bad"; said.textContent = "Put in your school's Canvas address first."; return address.focus(); }
     go.disabled = true;
     said.className = "";
     said.textContent = "A Canvas window is open. Sign in there the way you always do.";
-    const result = await app.canvasSignIn(url);
+    const result = app ? await app.canvasSignIn(url) : await signInWithoutBridge(url);
     go.disabled = false;
     if (!result.ok) { said.className = "bad"; said.textContent = result.error; return; }
     said.className = "ok";
@@ -169,7 +191,7 @@ async function canvasBlock() {
     h("p", "Your school's own Canvas login opens in a window. Sign in there like always. Anexis never sees your username or password."),
     h("div.inline", address, go, out),
     said,
-    app ? null : h("small", "This button works in the Anexis app. In a plain browser, use a Canvas token in the boxes below."));
+    inApp ? null : h("small", "This button works in the Anexis app. In a plain browser, use a Canvas token in the boxes below."));
 }
 
 /** A part of a screen that fills itself in when its data arrives, so a slow

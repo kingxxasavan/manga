@@ -157,15 +157,24 @@ async def test_problems_are_explained(school, ctx, settings):
     assert (await canvas.canvas_upcoming({}, ctx)).startswith("Error: Canvas is not set up")
 
 
-def test_the_canvas_tools_only_appear_once_there_is_a_token(settings):
+async def test_the_canvas_tools_are_always_there_and_say_how_to_connect(settings, memory):
     from anexis.tools.builtin import register_builtin
     from anexis.tools.registry import Registry
 
-    without, with_token = Registry(), Registry()
-    register_builtin(without, settings)
-    settings.env = {"CANVAS_URL": "school.test", "CANVAS_TOKEN": "x"}
-    register_builtin(with_token, settings)
-    assert without.get("canvas_missing") is None and with_token.get("canvas_download") is not None
+    registry = Registry()
+    register_builtin(registry, settings)
+    tool = registry.get("canvas_upcoming")
+    assert tool is not None and registry.get("canvas_download") is not None
+    ctx = ToolContext(settings=settings, memory=memory, router=FakeRouter(), registry=registry, session_id="s")
+    said = await tool.handler({}, ctx)
+    assert said.startswith("Error: Canvas is not set up") and "Sign in with my browser" in said
+
+
+def test_the_model_is_told_to_use_canvas_and_never_to_hunt_for_logins():
+    from anexis.core.agent import SYSTEM
+
+    assert "canvas_ tools" in SYSTEM and "Sign in with my browser" in SYSTEM
+    assert "never look for, read or use the owner's passwords" in SYSTEM
 
 
 def test_names_are_made_safe_for_windows():

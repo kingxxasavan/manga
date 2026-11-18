@@ -27,8 +27,16 @@ if (-not (Test-Path (Join-Path $Live "anexis"))) {
 
 if (-not $NoPull) {
     Say "Getting the newest code"
+    $before = (Get-FileHash -LiteralPath $PSCommandPath).Hash
     git -C $Repo pull --ff-only
     if ($LASTEXITCODE -ne 0) { throw "git pull failed. Fix that, or run again with -NoPull to use the code that is here." }
+    # The pull may have brought a newer copy of this very script. PowerShell is
+    # still running the old one, so hand over to the new one.
+    if ((Get-FileHash -LiteralPath $PSCommandPath).Hash -ne $before) {
+        Write-Host "This updater changed too. Running the new one."
+        & powershell -ExecutionPolicy Bypass -File $PSCommandPath -NoPull
+        exit $LASTEXITCODE
+    }
 }
 
 Say "Keeping a copy of what is installed now"

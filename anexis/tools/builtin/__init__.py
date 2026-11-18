@@ -10,7 +10,8 @@ def register_builtin(registry: Registry, settings=None) -> None:
             registry.add(tool)
     for tool in desktop.tools():
         registry.add(tool)
-    # The Canvas tools only make sense once the owner signed in to Canvas.
-    if settings is not None and canvas.configured(settings):
-        for tool in canvas.TOOLS:
-            registry.add(tool)
+    # The Canvas tools are always there. Before the owner signs in to Canvas
+    # they answer "sign in from Keys", which is far better than the model
+    # hunting for the school's login page on the web on its own.
+    for tool in canvas.TOOLS:
+        registry.add(tool)

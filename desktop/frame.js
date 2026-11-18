@@ -118,6 +118,17 @@ function afterReady(context) {
       if (!process.env.ANEXIS_FRAME_SHOT) app.quit();
     });
   }
+  // For smoke tests: ANEXIS_FRAME_EVAL=<js> runs in the deck once it loaded and prints the answer.
+  if (process.env.ANEXIS_FRAME_EVAL) {
+    win.webContents.once("did-finish-load", () => setTimeout(async () => {
+      try {
+        console.log("ANEXIS_EVAL " + JSON.stringify(await win.webContents.executeJavaScript(process.env.ANEXIS_FRAME_EVAL)));
+      } catch (error) {
+        console.log("ANEXIS_EVAL " + JSON.stringify({ error: error.message }));
+      }
+      if (!process.env.ANEXIS_FRAME_SHOT) app.quit();
+    }, 3000));
+  }
   // For smoke tests: ANEXIS_FRAME_SHOT=<file.png> saves a picture of the window and quits.
   if (process.env.ANEXIS_FRAME_SHOT) {
     setTimeout(async () => {
@@ -166,6 +177,16 @@ function createWindow(context) {
 
   // The deck is the only thing this window ever shows. Links go to the real browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
+    // The deck's second way to ask for the Canvas sign in, for when the bridge
+    // (preload.js) is missing: it opens about:blank#anexis-canvas=<address>.
+    const ask = url.match(/^about:blank#anexis-canvas=(.*)$/);
+    if (ask) {
+      const tell = (detail) => win?.webContents.executeJavaScript(
+        `window.dispatchEvent(new CustomEvent("anexis-canvas", { detail: ${JSON.stringify(detail)} }))`).catch(() => {});
+      tell({ started: true });
+      canvasSignIn(decodeURIComponent(ask[1])).then(tell);
+      return { action: "deny" };
+    }
     if (/^https?:/.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
