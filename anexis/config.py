@@ -93,6 +93,12 @@ class Settings:
     # "ask": risky tools wait for a yes. "full": every tool runs without asking.
     # The desktop app sets full, since the point of it is to drive the PC.
     control: str = "ask"
+    # Anexis checking in on its own: "off", "ask" (offers tasks, waits for a yes)
+    # or "act" (does them and reports after). See core/initiative.py.
+    autonomy: str = "ask"
+    autonomy_minutes: int = 60
+    autonomy_quiet: str = "22:00-07:00"
+    autonomy_daily: int = 6
     # tool name -> "allow" or "ask", to loosen or tighten one tool
     permissions: dict[str, str] = field(default_factory=dict)
 
@@ -117,6 +123,8 @@ class Settings:
         self.workspace = Path(self.workspace).expanduser()
         self.manifest = Path(self.manifest).expanduser()
         self.ui_dir = Path(self.ui_dir).expanduser()
+        if self.autonomy not in ("off", "ask", "act"):
+            raise ValueError(f'autonomy must be "off", "ask" or "act", not {self.autonomy!r}')
         if self.control not in ("ask", "full"):
             raise ValueError(f'control must be "ask" or "full", not {self.control!r}')
         if not self.providers:

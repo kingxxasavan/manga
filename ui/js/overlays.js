@@ -422,6 +422,24 @@ export async function openApp(hooks) {
     },
   }, h("i", { style: `background:${THEMES[name]}` }), name);
   const nameInput = h("input", { type: "text", value: settings.name, maxLength: 40 });
+  const levels = { off: "Off: it only answers when you talk to it.", ask: "Ask: it checks in, tells you things, asks questions, and offers tasks it waits for your yes on.",
+    act: "Act: the same, but it does the tasks itself and tells you after." };
+  const autonomy = h("div.cards", Object.entries(levels).map(([value, about]) => h("button.card", {
+    type: "button", "aria-pressed": String(settings.autonomy === value),
+    onclick: async (e) => {
+      try { await api.post("/settings", { autonomy: value }); } catch (err) { return toast(err.message, "bad"); }
+      for (const card of e.currentTarget.parentNode.children) card.setAttribute("aria-pressed", String(card === e.currentTarget));
+    },
+  }, h("b", value), h("small", about))));
+  const checkNow = h("button.btn", { type: "button" }, "Check in now");
+  checkNow.onclick = async () => {
+    checkNow.disabled = true;
+    try {
+      const r = await api.post("/initiative/now");
+      toast(r.action === "skipped" ? `Not now: ${r.why}.` : r.action === "none" ? "It looked around and found nothing worth saying." : "It said something. See From Anexis under Chats.");
+    } catch (err) { toast(err.message, "bad"); }
+    checkNow.disabled = false;
+  };
   const fx = h("input", { type: "checkbox", checked: document.documentElement.dataset.fx !== "off" });
   fx.onchange = () => hooks.setFx(fx.checked);
   // Only the app window can start with Windows. In a plain browser this is left out.
@@ -461,6 +479,9 @@ export async function openApp(hooks) {
     ),
     h("div.form",
       h("div.field", h("span", "Theme"), h("div.swatches", Object.keys(THEMES).map(swatch))),
+      h("div.field", h("span", "On its own"), autonomy,
+        h("small", "Every hour, outside 10pm to 7am, it looks at what is due, how the computer is doing and what it does not know about you yet. What it says shows up in From Anexis under Chats."),
+        h("div.actions", checkNow, h("button.btn.ghost", { type: "button", onclick: () => { closeSheet(); hooks.openChat?.("inbox"); } }, "Open From Anexis"))),
       atLogin,
       h("label.check-row", fx, h("div", h("b", "Scan lines"), h("small", "The faint lines over the screen. Turn off if they bother you."))),
       h("label.field", h("span", "Name"), nameInput, h("small", "What the assistant is called.")),

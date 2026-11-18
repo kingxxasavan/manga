@@ -45,6 +45,7 @@ def main() -> None:
     settings.manifest = settings.home / "none.yaml"  # no outside tool servers here
     settings.learn = False
     settings.seed_owner = False  # the test counts memories
+    settings.autonomy_minutes = 0
     app = create_app(AnexisApp(settings, router=Scripted()))
     server = uvicorn.Server(uvicorn.Config(app, host=settings.host, port=settings.port, log_level="warning", timeout_graceful_shutdown=2))
     app.state.server = server

@@ -45,6 +45,13 @@ async def run_jarvis(client: AnexisClient, console: Console | None = None) -> No
     health = await client.health()
     for line in greeting(health):
         console.print(f"[bold cyan]{INDENT}{escape(line)}[/bold cyan]" if line.startswith("jarvis") else f"[yellow]{INDENT}{escape(line)}[/yellow]", highlight=False)
+    # What it said on its own while you were away (core/initiative.py).
+    try:
+        inbox = (await client.messages("inbox"))[-3:]
+    except httpx.HTTPError:
+        inbox = []
+    for note in inbox:
+        console.print(f"[magenta]{INDENT}from jarvis: {escape(' '.join(note['content'].split())[:300])}[/magenta]", highlight=False)
     console.print(f"[dim]{INDENT}{HELP}[/dim]")
 
     while True:

@@ -265,6 +265,8 @@ class Memory:
         out = []
         for r in rows:
             title = " ".join(str(r["first"] or "").split())
+            if r["id"] == "inbox":  # the chat Anexis starts itself (core/initiative.py)
+                title = "From Anexis: what it noticed, asked and did on its own"
             out.append({"id": r["id"], "mode": r["mode"], "started_at": r["started_at"], "updated_at": r["updated_at"],
                         "messages": r["count"], "title": (title[:70] + "...") if len(title) > 70 else title or "(no words)"})
         return out

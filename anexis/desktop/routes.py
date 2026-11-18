@@ -99,7 +99,7 @@ def attach(app, anexis) -> None:
     @app.get("/settings")
     async def settings_get():
         return {
-            "name": settings.name, "control": settings.control, "workspace": str(settings.workspace),
+            "name": settings.name, "control": settings.control, "autonomy": settings.autonomy, "workspace": str(settings.workspace),
             "home": str(settings.home), "config": str(_config_path(settings)),
             "providers": [{"name": p.name, "active": p.active, "models": p.models} for p in settings.providers],
         }
@@ -111,6 +111,10 @@ def attach(app, anexis) -> None:
             if body["control"] not in ("ask", "full"):
                 raise HTTPException(400, 'control must be "ask" or "full"')
             changes["agent.control"] = body["control"]
+        if "autonomy" in body:
+            if body["autonomy"] not in ("off", "ask", "act"):
+                raise HTTPException(400, 'autonomy must be "off", "ask" or "act"')
+            changes["agent.autonomy"] = body["autonomy"]
         if "name" in body:
             name = str(body["name"]).strip()[:40]
             if not name:
@@ -123,6 +127,7 @@ def attach(app, anexis) -> None:
                 raise HTTPException(500, f"Could not save the settings: {e}") from None
             # Both take effect right now, no restart needed.
             settings.control = changes.get("agent.control", settings.control)
+            settings.autonomy = changes.get("agent.autonomy", settings.autonomy)
             settings.name = changes.get("name", settings.name)
             anexis.events.publish({"type": "settings", "control": settings.control, "name": settings.name})
         return await settings_get()
@@ -149,6 +154,13 @@ def attach(app, anexis) -> None:
         app.state.exit_code = RESTART_CODE
         asyncio.get_running_loop().call_later(0.3, lambda: setattr(server, "should_exit", True))
         return {"restarting": True}
+
+    @app.post("/initiative/now")
+    async def initiative_now():
+        """Checks in right now instead of waiting, from the App screen."""
+        from anexis.core.initiative import Initiative
+
+        return await Initiative(anexis).check_in()
 
     @app.post("/app/notice")
     async def app_notice(body: dict):

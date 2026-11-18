@@ -241,6 +241,14 @@ function onEvent(event) {
     if (got) { toast(`Synced with the school server: ${got} new ${got === 1 ? "thing" : "things"} from school.`); memory.refresh(); pulse(); }
   }
   else if (event.type === "sync_failed") $('[data-open="keys"]').title = `School sync: ${event.error}`;
+  else if (event.type === "initiative") {
+    // Anexis started something on its own: a heads up, a question, an offer, or work it did.
+    const label = { say: "heads up", ask: "a question", offer: "can I do this?", did: "done on its own" }[event.action] || "";
+    notify(`${name}: ${label}`, event.text);
+    voice.speak(event.text);
+    $("#chat-list").classList.add("alert");
+    if (chat.state.sessionId === "inbox") chat.openConversation("inbox");
+  }
   else if (event.type === "task_done") notify(`${name}: done`, event.text || "Finished what you asked.");
   else if (event.type === "wake") showWindow();
   else if (event.type === "canvas_failed") toast(`Canvas could not be reached: ${event.error}`, "bad");
@@ -317,6 +325,7 @@ async function boot(state) {
 }
 
 async function openChats() {
+  $("#chat-list").classList.remove("alert");
   overlays.openSheet("Chats", h("div.empty", "Loading..."));
   try {
     const rows = await api.get("/sessions");
@@ -341,7 +350,7 @@ function open(which) {
   return ({
     setup: openSetup, keys: () => overlays.openKeys({ terminalAt, onChange: pulseClaude }), models: () => overlays.openModels({ onSaved: checkModels }),
     doctor: overlays.openDoctor, about: overlays.openAbout,
-    app: () => overlays.openApp({ setTheme, setFx, terminalAt, onName: showName, themes: THEMES }),
+    app: () => overlays.openApp({ setTheme, setFx, terminalAt, onName: showName, themes: THEMES, openChat: (id) => chat.openConversation(id) }),
   })[which]?.();
 }
 

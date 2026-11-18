@@ -38,6 +38,12 @@ class AnexisClient:
     async def stop(self, session_id: str | None = None) -> int:
         return (await self._call("POST", "/chat/stop", json={"session_id": session_id} if session_id else {})).json()["stopped"]
 
+    async def messages(self, session_id: str) -> list[dict]:
+        """A chat's messages, or [] when there is no such chat."""
+        async with self._http(10) as http:
+            resp = await http.get(f"/sessions/{session_id}/messages")
+        return resp.json().get("messages", []) if resp.status_code == 200 else []
+
     async def clear(self, session_id: str) -> bool:
         return (await self._call("DELETE", f"/sessions/{session_id}")).json()["deleted"]
 

@@ -71,6 +71,22 @@ class AnexisApp:
             self._tasks.append(asyncio.create_task(self._canvas()))
         if self.settings.env.get("ANEXIS_SYNC_URL"):
             self._tasks.append(asyncio.create_task(self._sync_loop()))
+        if self.settings.autonomy_minutes > 0:
+            self._tasks.append(asyncio.create_task(self._initiative_loop()))
+
+    async def _initiative_loop(self) -> None:
+        """Anexis checking in on its own (core/initiative.py). It reads the
+        setting every round, so turning it off or on takes effect at once."""
+        from anexis.core.initiative import Initiative
+
+        initiative = Initiative(self)
+        await asyncio.sleep(120)  # let the tools and the first sync settle first
+        while True:
+            try:
+                await initiative.check_in()
+            except Exception as e:  # a check in must never take anything else down
+                self.memory.log("initiative_failed", {"error": f"{type(e).__name__}: {e}"[:300]})
+            await asyncio.sleep(max(5, self.settings.autonomy_minutes) * 60)
 
     async def sync_now(self) -> dict:
         """One sync with the school server. Never raises: the answer says how it went."""
