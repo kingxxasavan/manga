@@ -112,6 +112,9 @@ class Settings:
     claude_backoff_minutes: int = 30
     fallback_rounds: int = 12
 
+    voice_wake: bool = False      # listen in the background for the wake word
+    wake_word: str = "hey_jarvis"  # an openWakeWord model name
+    wake_threshold: float = 0.5
     stt_model: str = "base"
     tts_voice: str = "en_US-lessac-medium"
     piper_bin: str = "piper"

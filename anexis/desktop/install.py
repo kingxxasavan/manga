@@ -169,8 +169,10 @@ async def step_voice(settings, wanted, say, run: Run, fetch: Fetch) -> str:
     if not uv:
         raise StepFailed("uv is missing, so the voice packages cannot be installed.")
     say("installing speech to text and text to speech")
-    code = await run([uv, "pip", "install", "--python", sys.executable, "--break-system-packages",
-                      "faster-whisper>=1.1", "piper-tts"], say, env=_tool_env())
+    packages = ["faster-whisper>=1.1", "piper-tts", "sounddevice>=0.5"]
+    if IS_WINDOWS:  # "hey Jarvis": openWakeWord needs a runtime that only exists for Windows here
+        packages += ["openwakeword>=0.6", "onnxruntime>=1.17"]
+    code = await run([uv, "pip", "install", "--python", sys.executable, "--break-system-packages", *packages], say, env=_tool_env())
     if code != 0:
         raise StepFailed("The voice packages did not install. See the lines above for why.")
     say(f"downloading the voice {settings.tts_voice}")

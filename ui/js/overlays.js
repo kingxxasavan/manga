@@ -431,6 +431,19 @@ export async function openApp(hooks) {
       for (const card of e.currentTarget.parentNode.children) card.setAttribute("aria-pressed", String(card === e.currentTarget));
     },
   }, h("b", value), h("small", about))));
+  // "hey Jarvis": listening in the background for the wake word.
+  let wake = { on: false, available: false, why: "", word: "hey jarvis" };
+  try { wake = await api.get("/voice/wake"); } catch { /* shown as off */ }
+  const wakeBox = h("input", { type: "checkbox", checked: wake.on });
+  const wakeSaid = h("small", wake.available ? `Say "${wake.word}", then talk. Works with the window hidden in the tray.` : wake.why);
+  wakeBox.onchange = async () => {
+    try {
+      const now = await api.post("/voice/wake", { on: wakeBox.checked });
+      wakeBox.checked = now.on;
+      wakeSaid.textContent = now.on ? `Listening for "${now.word}".` : "Off.";
+    } catch (err) { wakeBox.checked = false; wakeSaid.textContent = err.message; }
+  };
+  const wakeRow = h("label.check-row", wakeBox, h("div", h("b", `Listen for "${wake.word}"`), wakeSaid));
   const checkNow = h("button.btn", { type: "button" }, "Check in now");
   checkNow.onclick = async () => {
     checkNow.disabled = true;
@@ -483,6 +496,7 @@ export async function openApp(hooks) {
         h("small", "Every hour, outside 10pm to 7am, it looks at what is due, how the computer is doing and what it does not know about you yet. What it says shows up in From Anexis under Chats."),
         h("div.actions", checkNow, h("button.btn.ghost", { type: "button", onclick: () => { closeSheet(); hooks.openChat?.("inbox"); } }, "Open From Anexis"))),
       atLogin,
+      wakeRow,
       h("label.check-row", fx, h("div", h("b", "Scan lines"), h("small", "The faint lines over the screen. Turn off if they bother you."))),
       h("label.field", h("span", "Name"), nameInput, h("small", "What the assistant is called.")),
     ),

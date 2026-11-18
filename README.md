@@ -96,6 +96,48 @@ cannot see pictures, so `see_screen` (and clicking things it finds) needs a visi
 model: add `vision = "<a vision model>"` under a provider's `[providers.models]`.
 Without one Anexis works by windows, keys and the clipboard.
 
+### Faster replies with tools
+
+Picking tools is most of the waiting with a big model. In **Models**, each
+provider has a **tools** job: put a small quick model there (the screen suggests
+one from what the provider has, press **Try** first) and it does the tool
+calling, while the chat model is left for when there is no tools model. Tools a
+reply needs that do not depend on each other also run at the same time now.
+
+### On its own
+
+Every hour (never 10pm to 7am, at most 6 times a day) Anexis looks at what is
+due or overdue, how the computer and Anexis itself are doing (disk, memory,
+broken tools, models down), what it still does not know about you, and what you
+talked about lately. Most of the time it does nothing. When it is worth it, it
+gives a heads up, asks one question, or offers a task, in its own chat called
+**From Anexis** under Chats, with a notification. Answer it there like any chat.
+
+| In App | It |
+|---|---|
+| Off | only answers when you talk to it |
+| Ask (the default) | checks in, tells you things, asks, and offers tasks it waits for your yes on |
+| Act | the same, but does the tasks itself and tells you after. Anything that would need a yes is skipped. |
+
+**Check in now** in App runs one check in straight away.
+
+### Tray, full screen and notifications
+
+Closing the window keeps Anexis running in the tray: click the tray icon (or
+open Anexis again) to bring it back, and quit from the tray menu or with Ctrl+Q.
+When it starts with Windows it waits in the tray. In full screen (F11) the top
+bar slides away and comes back when the mouse touches the top edge. When work
+you asked for finishes while the window is hidden or in the background, a
+Windows notification says so. Clicking it brings Anexis back.
+
+### Hey Jarvis
+
+In App, turn on **Listen for "hey jarvis"**. Then say "hey Jarvis" and talk:
+the window comes back, it writes down what you said, answers, and says the
+answer out loud. It works with the window hidden in the tray. Everything runs
+on your PC (openWakeWord for the wake word, Whisper for your words, Piper for
+its voice). It needs the voice download: open Setup and tick Voice.
+
 ### Change the app without rebuilding it
 
 The installed app runs from a folder of plain files, `%LOCALAPPDATA%\Anexis\app`.
@@ -563,7 +605,7 @@ Keys go in `.env` (see `.env.example`), never in `anexis.toml`.
 ```bash
 uv sync
 uv sync --extra desktop   # adds screen, keyboard and mouse control
-uv run pytest        # 423 tests
+uv run pytest        # 446 tests
 uv run ruff check anexis tests
 ```
 
@@ -614,6 +656,10 @@ Windows documents them, so expect to shake a few out on the first real run:
    what it printed.
 9. Plain HTTP between the PC and the school server, and Tailscale. Tested with
    two copies of Anexis on one machine.
+10. "Hey Jarvis" with a real microphone and the real openWakeWord model. The loop
+    was tested with a pretend microphone and a pretend detector.
+11. The tray and notifications on Windows. Closing to the tray and the full
+    screen top bar were tested in the real app window on Linux.
 
 Also checked on the build machine: every tool server started and answered a real
 call (the ones that reach the web hit this machine's network block, not a bug),

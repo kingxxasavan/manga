@@ -250,7 +250,13 @@ function onEvent(event) {
     if (chat.state.sessionId === "inbox") chat.openConversation("inbox");
   }
   else if (event.type === "task_done") notify(`${name}: done`, event.text || "Finished what you asked.");
-  else if (event.type === "wake") showWindow();
+  else if (event.type === "wake") { showWindow(); toast("Listening..."); }
+  else if (event.type === "voice_heard") toast(event.text ? `Heard: ${event.text}` : "Did not catch that.");
+  else if (event.type === "voice_reply") {
+    if (chat.state.sessionId === "voice") chat.openConversation("voice");
+    else toast(`${name}: ${event.text.slice(0, 200)}`);
+  }
+  else if (event.type === "wake_failed") toast(`Wake word: ${event.error}`, "bad");
   else if (event.type === "canvas_failed") toast(`Canvas could not be reached: ${event.error}`, "bad");
   else if (event.type === "brain_restarting") toast(`Code changed (${event.files.join(", ")}). Restarting the brain.`);
   else if (event.type === "brain_error") {

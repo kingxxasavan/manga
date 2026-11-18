@@ -38,6 +38,7 @@ class AnexisApp:
         self.agent = Agent(settings, self.memory, self.router, self.registry, self.learner, self.events)
         self._voice = None
         self._sync_transport = None  # tests stand in for the school server here
+        self.wake = None  # the "hey Jarvis" listener, when it is on (voice/wake.py)
         self._tasks: list[asyncio.Task] = []
 
     @property
@@ -73,6 +74,36 @@ class AnexisApp:
             self._tasks.append(asyncio.create_task(self._sync_loop()))
         if self.settings.autonomy_minutes > 0:
             self._tasks.append(asyncio.create_task(self._initiative_loop()))
+        if self.settings.voice_wake:
+            self.start_wake()
+
+    def start_wake(self, **parts) -> tuple[bool, str]:
+        """Starts listening for the wake word. `parts` swaps pieces (tests)."""
+        from anexis.voice.wake import VOICE_SESSION, WakeListener, can_wake
+
+        if self.wake and self.wake.state not in ("off", "failed"):
+            return True, ""
+        if not parts:
+            ok, why = can_wake()
+            if not ok:
+                self.memory.log("wake_failed", {"error": why})
+                return False, why
+
+        async def answer(text: str) -> str:
+            self.memory.ensure_session(VOICE_SESSION, "general")
+            result = await self.agent.run_turn(VOICE_SESSION, text)
+            reply = result.get("text") or result.get("error") or ""
+            self.events.publish({"type": "voice_reply", "heard": text, "text": reply, "session_id": VOICE_SESSION})
+            return reply
+
+        self.wake = WakeListener(self, answer, threshold=self.settings.wake_threshold, **parts)
+        self.wake.start()
+        return True, ""
+
+    def stop_wake(self) -> None:
+        if self.wake:
+            self.wake.stop()
+            self.wake = None
 
     async def _initiative_loop(self) -> None:
         """Anexis checking in on its own (core/initiative.py). It reads the
@@ -169,6 +200,8 @@ class AnexisApp:
                 self.memory.log("consolidate_failed", {"error": str(e)[:300]})
 
     async def stop(self) -> None:
+        if self.wake:
+            await asyncio.to_thread(self.stop_wake)
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)

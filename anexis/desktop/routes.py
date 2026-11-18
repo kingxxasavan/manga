@@ -155,6 +155,28 @@ def attach(app, anexis) -> None:
         asyncio.get_running_loop().call_later(0.3, lambda: setattr(server, "should_exit", True))
         return {"restarting": True}
 
+    @app.get("/voice/wake")
+    async def wake_state():
+        from anexis.voice.wake import can_wake
+
+        ok, why = can_wake()
+        return {"on": settings.voice_wake, "state": anexis.wake.state if anexis.wake else "off",
+                "available": ok, "why": why, "word": settings.wake_word.replace("_", " ")}
+
+    @app.post("/voice/wake")
+    async def wake_switch(body: dict):
+        """Turns listening for the wake word on or off, and keeps that choice."""
+        on = bool(body.get("on"))
+        if on:
+            ok, why = anexis.start_wake()
+            if not ok:
+                raise HTTPException(400, why)
+        else:
+            await asyncio.to_thread(anexis.stop_wake)
+        settings.voice_wake = on
+        set_values(_config_path(settings), {"voice.voice_wake": on})
+        return await wake_state()
+
     @app.post("/initiative/now")
     async def initiative_now():
         """Checks in right now instead of waiting, from the App screen."""
