@@ -20,7 +20,7 @@ export async function openSetup() {
     preset: state.preset || state.best,
     name: state.name,
     control: state.done ? state.control : "full",
-    voice: false,
+    voice: true,   // the JARVIS voice is the main way to use Anexis
     install: { ollama: true, claude: !state.machine.claude, tools: true },
   };
   let page = 0;
@@ -48,7 +48,7 @@ export async function openSetup() {
           h("div.field", h("span", "Control of this computer"), h("div.cards",
             control("full", "Full control", "Runs commands, opens apps, changes files, uses the keyboard and mouse without asking. Every action shows in the Activity panel and STOP ends it."),
             control("ask", "Ask first", "Reading and searching just run. Anything that changes the computer waits for your yes."))),
-          h("label.check-row", voice, h("div", h("b", "Voice"), h("small", "Talk to it and have replies read out loud. Runs on this computer. Adds a download of about 400 MB."))),
+          h("label.check-row", voice, h("div", h("b", "Voice"), h("small", state.machine.voice ? "The JARVIS voice is installed. JARVIS listens for its name." : "The JARVIS voice: say \"Jarvis\" and talk. Runs on this computer. A download of a few GB, once."))),
         ),
       ];
     },

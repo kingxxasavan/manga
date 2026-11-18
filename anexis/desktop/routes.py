@@ -9,7 +9,6 @@ import os
 import platform as host_platform
 import sys
 import time
-from importlib.util import find_spec
 from pathlib import Path
 
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
@@ -34,6 +33,26 @@ KEY_NAMES = {option.env for option in wizard.KEY_OPTIONS}
 
 def _config_path(settings) -> Path:
     return find_config(settings.home) or settings.home / "anexis.toml"
+
+
+def _jarvis_ready(settings) -> bool:
+    """The JARVIS voice can start: its packages are installed and its models downloaded."""
+    from anexis.voice.hailmary import engine
+
+    return engine.available(settings)[0]
+
+
+def _voice_section(settings) -> dict:
+    """The [voice] values in anexis.toml now (plain values only), to put back after setup rewrites it."""
+    import tomllib
+
+    path = _config_path(settings)
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    voice = data.get("voice") if isinstance(data.get("voice"), dict) else {}
+    return {k: v for k, v in voice.items() if isinstance(v, (bool, int, float, str))}
 
 
 def attach(app, anexis) -> None:
@@ -170,7 +189,7 @@ def attach(app, anexis) -> None:
         running = getattr(anexis.wake, "name", "simple") if anexis.wake else ""
         return {"on": settings.voice_wake, "state": anexis.wake.state if anexis.wake else "off",
                 "available": ok, "why": why, "word": word, "engine": running or engine,
-                "attention": settings.voice_attention}
+                "attention": settings.voice_attention, "error": getattr(anexis.wake, "error", "") if anexis.wake else ""}
 
     @app.post("/voice/approval")
     async def voice_approval(body: dict):
@@ -227,7 +246,8 @@ def attach(app, anexis) -> None:
             "machine": {
                 "summary": machine.describe(), "vram_gb": round(machine.vram_gb, 1), "ram_gb": round(machine.ram_gb, 1),
                 "ollama": machine.has_ollama, "node": machine.node_major, "claude": machine.has_claude,
-                "voice": find_spec("faster_whisper") is not None,
+                # the JARVIS voice with its models, not just the older simple voice
+                "voice": _jarvis_ready(settings),
             },
             "presets": [
                 {"name": p.name, "title": p.title, "blurb": p.blurb, "models": p.pull, "voice": p.voice}
@@ -267,10 +287,16 @@ def attach(app, anexis) -> None:
             control = body.get("control") or "full"
             voice = bool(body.get("voice"))
             plan = {"PRESET": body["preset"], "INSTALL_VOICE": str(int(voice))}
+            kept = _voice_section(settings)  # setup rewrites anexis.toml; the voice choices stay
             try:
                 backup = wizard.apply_choices(settings.home, body["preset"], name, changes, plan, control)
             except ValueError as e:
                 raise HTTPException(400, str(e)) from None
+            if voice:
+                kept["voice_wake"] = True  # picked voice in setup: JARVIS listens from now on
+            if kept:
+                set_values(_config_path(settings), {f"voice.{k}": v for k, v in kept.items()})
+                settings.voice_wake = bool(kept.get("voice_wake", settings.voice_wake))
         elif changes:
             wizard.update_env_file(settings.home / ".env", changes)
         # A preset names models that the provider may have retired since this

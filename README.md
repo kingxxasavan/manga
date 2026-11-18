@@ -137,11 +137,14 @@ The voice is the JARVIS voice from Hail Mary, moved in here
 say "Jarvis" and talk. The window comes back, it answers out loud, and you can
 talk over it to cut it off. It works with the window hidden in the tray.
 
-When you say "Jarvis" the window turns into the JARVIS screen: black, with one
-circle in the middle. It stays dark while nobody is talking, and lights up blue
-with your voice while it listens and with its own voice while it answers. After
-20 seconds of quiet the deck comes back (or press Esc). The **jarvis** button at
-the top opens it any time.
+The JARVIS screen is the main screen: the app opens on it. Black, with one
+circle in the middle. It stays dark while nobody is talking, glows a little
+with any voice it hears while it waits for its name (so you can see the mic
+works), and lights up blue with your voice when you talk to it and with its own
+voice while it answers. Under it it always says where the voice is at: not set
+up, off, waking up, failed and why, or listening, with a button that fixes it
+(set up voice, turn on, try again). **deck** or Esc goes to the deck, the
+**jarvis** button at the top comes back.
 
 How it listens (`voice_attention` in anexis.toml):
 

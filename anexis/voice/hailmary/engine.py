@@ -39,7 +39,10 @@ def config(settings) -> dict:
 
 
 def _installed(name: str) -> bool:
+    import importlib
     import sys
+
+    importlib.invalidate_caches()  # packages Setup installed a moment ago count without a restart
 
     if sys.modules.get(name) is not None:  # already loaded (a test may stand one in with no spec)
         return True
@@ -88,6 +91,7 @@ class HailMaryEngine:
         self.audio = self.worker = None
         self._task: asyncio.Task | None = None
         self._state = "off"
+        self.error = ""  # why it failed to start, for the JARVIS screen
 
     @property
     def state(self) -> str:
@@ -123,7 +127,9 @@ class HailMaryEngine:
         except Exception as e:
             log.exception("voice failed to start")
             self._state = "failed"
-            self.app.events.publish({"type": "wake_failed", "error": f"{type(e).__name__}: {e}"[:300]})
+            self.error = f"{type(e).__name__}: {e}"[:300]
+            self.app.memory.log("wake_failed", {"error": self.error})
+            self.app.events.publish({"type": "wake_failed", "error": self.error})
             return
         self._state = "listening"
         self.app.events.publish({"type": "wake_listening", "engine": self.name})

@@ -263,11 +263,12 @@ function onEvent(event) {
     if (chat.state.sessionId === "voice") chat.openConversation("voice");
     else if (!orb.isOpen()) toast(`${name}: ${event.text.slice(0, 200)}`);
   }
-  else if (event.type === "wake_failed") toast(`Voice: ${event.error}`, "bad");
+  else if (event.type === "wake_failed") { orb.onEvent(event); if (!orb.isOpen()) toast(`Voice: ${event.error}`, "bad"); }
+  else if (event.type === "wake_listening") orb.onEvent(event);
   // The Hail Mary JARVIS voice
   else if (event.type === "voice_state") { voiceState = event.value; drawBrain(); orb.onEvent(event); }
   else if (["voice_levels", "voice_user", "voice_assistant_delta"].includes(event.type)) orb.onEvent(event);
-  else if (event.type === "voice_error") toast(`Voice: ${event.message}`, "bad");
+  else if (event.type === "voice_error") { orb.onEvent(event); if (!orb.isOpen()) toast(`Voice: ${event.message}`, "bad"); }
   else if (event.type === "voice_approval") {
     showWindow();
     orb.onEvent(event);
@@ -444,6 +445,10 @@ async function start() {
   show("chat");
 
   await booting;
+  // The JARVIS circle is the main screen. (The deck test sets "deck" to start on the deck.)
+  let home = "jarvis";
+  try { home = localStorage.getItem("anexis-home") || "jarvis"; } catch { /* private window */ }
+  if (home === "jarvis") orb.open(true);
   // A brand new install opens setup by itself. After that it is behind the Setup button.
   try {
     if (!(await api.get("/setup")).done && !overlays.sheetOpen()) openSetup();

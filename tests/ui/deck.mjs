@@ -74,6 +74,8 @@ try {
   await until("the brain to start", () => states().includes("ready"), 90);
   browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // The app opens on the JARVIS circle; these checks are about the deck, so start there.
+  await context.addInitScript(() => localStorage.getItem("anexis-home") || localStorage.setItem("anexis-home", "deck"));
   const page = await context.newPage();
   page.on("console", (m) => m.type() === "error" && problems.push(`console: ${m.text()}`));
   page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
@@ -111,6 +113,9 @@ try {
     await page.click(".sheet-foot .primary");
     await page.fill(".sheet input[type=text]", "Nex");
     assert.equal(await page.locator('.card[aria-pressed="true"] b').innerText(), "FULL CONTROL");
+    const voiceBox = page.locator('.check-row:has-text("JARVIS voice") input');
+    assert.equal(await voiceBox.isChecked(), true, "the JARVIS voice should be picked by default");
+    await voiceBox.uncheck();  // no sound on the test machine
     await shot("03-setup-options");
     await page.click(".sheet-foot .primary");
     for (const box of await page.$$(".sheet .check-row input:not(:disabled)")) await box.uncheck();
@@ -406,14 +411,28 @@ try {
     // The voice events come from the engine on a real PC; here they go straight to the screen.
     const voice = (event) => page.evaluate(async (e) => (await import("./js/orb.js")).onEvent(e), event);
     const glow = () => page.evaluate(() => Number(getComputedStyle(document.querySelector(".orb-glow")).opacity));
+    // No voice models here: the circle says so and offers to set it up.
+    await page.click("#jarvis");
+    await page.waitForSelector("#orb:not([hidden])");
+    await page.waitForSelector('.orb-status:has-text("voice not set up")');
+    await page.waitForSelector('.orb-action button:has-text("set up voice")');
+    await shot("15-jarvis-not-set-up");
+    await page.click(".orb-back");
+    // From here on, pretend the JARVIS voice is set up and listening.
+    const ready = { on: true, state: "listening", available: true, why: "", word: "jarvis", engine: "hailmary", attention: "smart", error: "" };
+    await page.route("**/voice/wake", (route) => route.fulfill({ json: ready }));
     await voice({ type: "wake" });
     await page.waitForSelector("#orb:not([hidden])");
+    await page.waitForSelector(`.orb-status:has-text('say "Jarvis"')`);
     assert.equal(await page.locator(".orb-name").innerText(), "JARVIS");
     assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".orb")).backgroundColor), "rgb(0, 0, 0)");
-    await voice({ type: "voice_levels", mic: 0.2, out: 0 });   // talking, but JARVIS is not listening yet
-    await page.waitForTimeout(250);
-    assert.equal(await glow(), 0, "lit up while nobody was talking to it");
+    assert.equal(await glow(), 0, "lit up while nobody was talking");
     await shot("15-jarvis-quiet");
+    await voice({ type: "voice_levels", mic: 0.2, out: 0 });   // someone talks, but not to JARVIS yet
+    await until("a faint glow that shows it hears", async () => (await glow()) > 0.1, 5);
+    assert.ok((await glow()) <= 0.31, "lit up fully before it was talked to");
+    await voice({ type: "voice_levels", mic: 0, out: 0 });
+    await until("the circle to go dark", async () => (await glow()) < 0.02, 5);
     await voice({ type: "voice_state", value: "listening" });
     await voice({ type: "voice_user", text: "what is due this week" });
     await voice({ type: "voice_levels", mic: 0.08, out: 0 });
@@ -439,6 +458,22 @@ try {
     await page.waitForSelector("#orb:not([hidden])");
     await page.click(".orb-back");
     await page.waitForSelector("#orb", { state: "hidden" });
+    // It failed to start: the circle says why and offers to try again.
+    await page.route("**/voice/wake", (route) => route.fulfill({ json: { ...ready, state: "failed", error: "PortAudioError: no microphone" } }));
+    await page.click("#jarvis");
+    await page.waitForSelector('.orb-note:has-text("no microphone")');
+    await page.waitForSelector('.orb-action button:has-text("try again")');
+    await page.unroute("**/voice/wake");
+    await page.click(".orb-back");
+  });
+
+  await step("the app opens on the JARVIS circle", async () => {
+    await page.evaluate(() => localStorage.setItem("anexis-home", "jarvis"));
+    await page.reload();
+    await page.waitForSelector("#orb:not([hidden])", { timeout: 20000 });
+    await page.keyboard.press("Escape");
+    await page.waitForSelector("#orb", { state: "hidden" });
+    await page.evaluate(() => localStorage.setItem("anexis-home", "deck"));
   });
 
   await step("nothing was logged as an error along the way", async () => {

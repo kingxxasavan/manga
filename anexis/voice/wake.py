@@ -153,6 +153,7 @@ class WakeListener:
         self.thread: threading.Thread | None = None
         self.loop: asyncio.AbstractEventLoop | None = None
         self.state = "off"
+        self.error = ""
 
     def start(self) -> None:
         self.loop = asyncio.get_running_loop()
@@ -176,7 +177,8 @@ class WakeListener:
             detector = self._detector or Detector(self.app.settings.wake_word)
         except Exception as e:  # no microphone, or the packages are missing
             self.state = "failed"
-            self._publish({"type": "wake_failed", "error": f"{type(e).__name__}: {e}"[:300]})
+            self.error = f"{type(e).__name__}: {e}"[:300]
+            self._publish({"type": "wake_failed", "error": self.error})
             return
         self.state = "listening"
         self._publish({"type": "wake_listening"})

@@ -159,3 +159,25 @@ async def test_the_install_route_streams_progress(live, monkeypatch):
     reply = await api(client, "POST", "/setup/install", json={"tools": True})
     events = [json.loads(line) for line in reply.text.splitlines() if line.strip()]
     assert [e["state"] for e in events] == ["start", "done", "finished"]
+
+
+async def test_setup_again_keeps_the_voice_choices_and_picking_voice_turns_listening_on(live, settings):
+    _, client = await live()
+    await api(client, "POST", "/setup", json={"preset": "cloud", "name": "One", "voice": False})
+    with (settings.home / "anexis.toml").open("a", encoding="utf-8") as f:
+        f.write('\n[voice]\nvoice_attention = "wake"\nvoice_title = "boss"\n')
+    await api(client, "POST", "/setup", json={"preset": "cloud", "name": "Two", "voice": True})
+    loaded = load_settings(env={"ANEXIS_HOME": str(settings.home)})
+    assert loaded.voice_attention == "wake" and loaded.voice_title == "boss"  # not lost by the rewrite
+    assert loaded.voice_wake is True  # voice picked in setup: JARVIS listens
+
+
+async def test_setup_says_voice_is_missing_until_the_jarvis_voice_itself_is_ready(live, settings, monkeypatch):
+    from anexis.voice.hailmary import engine
+
+    _, client = await live()
+    # the older simple voice being installed must not count as the JARVIS voice
+    monkeypatch.setattr(engine, "available", lambda s: (False, "Voice models not downloaded yet"))
+    assert (await api(client, "GET", "/setup")).json()["machine"]["voice"] is False
+    monkeypatch.setattr(engine, "available", lambda s: (True, ""))
+    assert (await api(client, "GET", "/setup")).json()["machine"]["voice"] is True

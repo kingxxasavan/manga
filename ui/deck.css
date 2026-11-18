@@ -595,8 +595,8 @@ small.bad { color: var(--bad); }
   --orb-blue: #3aa8ff;
   --orb-ice: #bfe4ff;
   --orb-deep: #0c2236;
-  position: fixed; inset: 0; z-index: 60;
-  display: grid; place-items: center; align-content: center; gap: 28px;
+  position: fixed; inset: 0; z-index: 35;   /* under Setup and the other screens (40), so they open on top */
+  display: grid; place-items: center; align-content: center; gap: 20px;
   padding: 16px; background: #000; color: var(--orb-ice);
   font-family: var(--display); text-align: center;
 }
@@ -642,6 +642,19 @@ small.bad { color: var(--bad); }
 .orb-status { font: 500 12px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: #4d6a80; }
 .orb[data-state="listening"] .orb-status,
 .orb[data-state="speaking"] .orb-status { color: var(--orb-blue); }
+.orb-note { margin: 0; width: min(560px, 100%); min-height: 1.5em; font: 400 13px/1.5 var(--mono); color: #6f8ea4; overflow-wrap: anywhere; }
+.orb-action { min-height: 34px; }
+.orb-action button {
+  font: 500 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+  padding: 10px 16px; border: 1px solid var(--orb-blue); color: var(--orb-ice);
+  transition: background-color 150ms ease, transform 140ms var(--ease-out), opacity 150ms ease;
+}
+.orb-action button:active { transform: scale(0.97); }
+.orb-action button:disabled { opacity: .5; }
+@media (hover: hover) and (pointer: fine) {
+  .orb-action button:hover { background-color: rgba(58, 168, 255, .16); }
+}
+.orb[data-phase="failed"] .orb-status { color: #ff8a8a; }
 .orb-lines { width: min(680px, 100%); min-height: 4.5em; display: grid; gap: 10px; }
 .orb-lines p { margin: 0; overflow-wrap: anywhere; }
 .orb-you { font: 400 14px/1.5 var(--mono); color: #5f7f96; }
