@@ -81,7 +81,7 @@ async def test_on_its_own_nothing_that_needs_a_yes_runs(app, settings):
 
     anexis = app(said("do", "", "clean up old files"), call("run_shell", command="rm -rf stuff"), "Skipped it.", autonomy="act")
     await Initiative(anexis).check_in(NOON)
-    tool_result = [m for m in anexis.router.calls[-1]["messages"] if m["role"] == "tool"][0]["content"]
+    tool_result = next(m for m in anexis.router.calls[-1]["messages"] if m["role"] == "tool")["content"]
     assert "declined" in tool_result
 
 
@@ -118,7 +118,7 @@ def test_quiet_hours_wrap_past_midnight():
 async def test_the_app_screen_can_change_autonomy_and_check_in_now(live, settings):
     import httpx
 
-    anexis, client = await live(said("say", "Hello from me."))
+    _, client = await live(said("say", "Hello from me."))
     async with httpx.AsyncClient(base_url=client.url) as http:
         assert (await http.post("/settings", json={"autonomy": "act"})).json()["autonomy"] == "act"
         assert (await http.post("/settings", json={"autonomy": "always"})).status_code == 400

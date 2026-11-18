@@ -148,7 +148,7 @@ class Initiative:
         memory = self.app.memory
         memory.ensure_session(INBOX)
         memory.add_message(INBOX, "assistant", text, meta={"initiative": action, **(extra or {})})
-        said = memory.kv_get(SAID_KEY, [])[-29:] + [text]
+        said = [*memory.kv_get(SAID_KEY, [])[-29:], text]
         memory.kv_set(SAID_KEY, said)
         day = datetime.now().strftime("%Y-%m-%d")
         counts = memory.kv_get(COUNT_KEY, {})
