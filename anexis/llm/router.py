@@ -37,6 +37,10 @@ class Router:
         for p in self.providers:
             await p.close()
 
+    def has_role(self, role: str) -> bool:
+        """True when some provider has a model picked for exactly this job."""
+        return any(p.cfg.models.get(role) for p in self.providers)
+
     def _model(self, provider: OpenAIProvider, role: str) -> str | None:
         models = provider.cfg.models
         if role in STRICT_ROLES:  # a model that cannot see must never be handed a picture

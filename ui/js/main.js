@@ -4,7 +4,7 @@
 import * as activity from "./activity.js";
 import * as api from "./api.js";
 import * as chat from "./chat.js";
-import { $, $$, h, toast } from "./dom.js";
+import { $, $$, h, notify, showWindow, toast } from "./dom.js";
 import * as files from "./files.js";
 import { initKeyboard } from "./keyboard.js";
 import * as memory from "./memory.js";
@@ -138,10 +138,7 @@ function remind(lines) {
   localStorage.setItem("anexis-reminded", JSON.stringify(Object.fromEntries(Object.entries(told).filter(([, day]) => day === today))));
   const text = fresh.length === 1 ? `Due soon: ${fresh[0]}` : `${fresh.length} things are due soon. The first: ${fresh[0]}`;
   toast(text);
-  try {
-    if (window.Notification && Notification.permission === "granted") new Notification(`${name}: due soon`, { body: fresh.join("\n") });
-    else if (window.Notification && Notification.permission === "default") Notification.requestPermission();
-  } catch { /* no notifications here, the toast is enough */ }
+  notify(`${name}: due soon`, fresh.join("\n"));
 }
 
 async function pulse() {
@@ -244,6 +241,8 @@ function onEvent(event) {
     if (got) { toast(`Synced with the school server: ${got} new ${got === 1 ? "thing" : "things"} from school.`); memory.refresh(); pulse(); }
   }
   else if (event.type === "sync_failed") $('[data-open="keys"]').title = `School sync: ${event.error}`;
+  else if (event.type === "task_done") notify(`${name}: done`, event.text || "Finished what you asked.");
+  else if (event.type === "wake") showWindow();
   else if (event.type === "canvas_failed") toast(`Canvas could not be reached: ${event.error}`, "bad");
   else if (event.type === "brain_restarting") toast(`Code changed (${event.files.join(", ")}). Restarting the brain.`);
   else if (event.type === "brain_error") {
@@ -329,6 +328,14 @@ async function openChats() {
   } catch (e) { overlays.openSheet("Chats", h("p", e.message)); }
 }
 
+// ---- full screen: the top bar hides until the mouse touches the top edge --
+addEventListener("mousemove", (e) => {
+  if (root.dataset.fullscreen !== "on") return;
+  const bar = $(".top");
+  if (e.clientY <= 6) bar.classList.add("reveal");
+  else if (!bar.contains(e.target) && e.clientY > bar.offsetHeight + 20) bar.classList.remove("reveal");
+});
+
 // ---- start ---------------------------------------------------------------
 function open(which) {
   return ({
@@ -351,6 +358,11 @@ async function start() {
     open,
     onBusy: (busy) => { if (!busy && reloadWaiting) location.reload(); },
     onDone: (event, said) => {
+      // Work asked for and finished while the owner looked away gets a notification.
+      if (document.hidden || !document.hasFocus()) {
+        const first = said.replace(/[*_`#>]/g, "").split("\n").find((line) => line.trim()) || "Finished.";
+        notify(`${name}: done`, first.trim());
+      }
       memory.markUsed((event.memories_used || []).map((m) => m.id));
       pulse();
       if ((event.tools_used || []).includes("code_task")) pulseClaude();

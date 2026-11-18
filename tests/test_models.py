@@ -68,7 +68,8 @@ async def test_a_retired_model_is_flagged_with_something_to_use_instead(cloud, m
     # the ones not turned on are offered too
     assert (ollama["name"], ollama["enabled"], ollama["kind"]) == ("ollama", False, "local")
     assert ollama_cloud["enabled"] is False and "OLLAMA_API_KEY" in ollama_cloud["error"] and not ollama_cloud["reachable"]
-    assert [r["name"] for r in state["roles"]] == ["chat", "coder", "small", "embed", "vision"]
+    assert [r["name"] for r in state["roles"]] == ["chat", "tools", "coder", "small", "embed", "vision"]
+    assert nvidia["fast"] == "meta/llama-4-8b-instruct"   # a quick tool model is offered, not filled in
 
 
 async def test_a_provider_that_is_down_says_so_and_the_rest_still_load(cloud, monkeypatch):

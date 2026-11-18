@@ -223,3 +223,73 @@ async def test_only_the_strongest_instructions_fit_when_there_are_too_many(setti
     await turn(agent, "hello")
     assert "The one that matters most" in router.system()
     assert router.system().count("Weak instruction") < 30
+
+
+# ---- speed: a fast tool model, and tools that run at the same time ---------
+
+async def test_a_fast_tool_model_does_the_loop_when_one_is_picked(settings, memory):
+    from anexis.llm.provider import ChatResult, ToolCall
+
+    agent, router, _ = build(settings, memory, roles={"tools": [
+        ChatResult(tool_calls=[ToolCall("c1", "calculate", {"expression": "6*7"})], provider="fast", model="quick"),
+        ChatResult(content="It is 42.", provider="fast", model="quick"),
+    ]})
+    router.has_role = lambda role: role == "tools"
+    result, _ = await turn(agent, "what is 6 times 7")
+    assert result["text"] == "It is 42." and result["model"] == "quick"
+    assert [c["role"] for c in router.calls] == ["tools", "tools"]
+
+
+async def test_without_a_fast_model_the_chat_model_does_it(settings, memory):
+    agent, router, _ = build(settings, memory, "hello")
+    await turn(agent, "hi")
+    assert router.calls[0]["role"] == "chat"
+
+
+def slow_tool(name, log):
+    import asyncio as aio
+
+    from anexis.tools.base import SAFE
+
+    async def handler(args, ctx):
+        log.append(f"start {name}")
+        await aio.sleep(0.4)
+        log.append(f"end {name}")
+        return f"{name} done"
+
+    return Tool(name, f"slow {name}", {"type": "object", "properties": {}}, handler, tier=SAFE)
+
+
+async def test_independent_tools_in_one_step_run_at_the_same_time(settings, memory):
+    import time as clock
+
+    from anexis.llm.provider import ChatResult, ToolCall
+
+    log = []
+    both = ChatResult(tool_calls=[ToolCall("a", "slow_a", {}), ToolCall("b", "slow_b", {})], provider="fake", model="m")
+    agent, router, _ = build(settings, memory, both, "Both done.")
+    agent.registry.add(slow_tool("slow_a", log))
+    agent.registry.add(slow_tool("slow_b", log))
+    started = clock.monotonic()
+    result, _ = await turn(agent, "do both slow things")
+    assert clock.monotonic() - started < 0.75                       # not 0.8: they overlapped
+    assert log[:2] == ["start slow_a", "start slow_b"]
+    tool_messages = [m for m in router.calls[1]["messages"] if m["role"] == "tool"]
+    assert [m["content"] for m in tool_messages] == ["slow_a done", "slow_b done"]   # answers in the order asked
+    assert result["text"] == "Both done."
+
+
+async def test_tools_that_must_ask_first_still_run_one_at_a_time(settings, memory):
+    from anexis.llm.provider import ChatResult, ToolCall
+
+    asked = []
+
+    async def confirm(tool, args, reason):
+        asked.append(tool.name)
+        return False
+
+    two = ChatResult(tool_calls=[ToolCall("a", "run_shell", {"command": "echo a"}), ToolCall("b", "run_shell", {"command": "echo b"})],
+                     provider="fake", model="m")
+    agent, _, _ = build(settings, memory, two, "ok")
+    await turn(agent, "run two", confirm=confirm)
+    assert asked == ["run_shell", "run_shell"]

@@ -262,8 +262,9 @@ export async function openModels(hooks = {}) {
         input.setAttribute("list", listId);
         const said = h("small", gone ? `${p.models[role.name]} is gone from ${p.title}.` : role.about);
         if (gone) said.className = "bad";
-        const use = p.suggested[role.name] && (gone || !p.models[role.name])
-          ? h("button.btn.ghost", { type: "button", onclick: () => { input.value = p.suggested[role.name]; said.className = ""; said.textContent = "Suggested. Press Try to check it answers."; } }, "Use suggested")
+        const pick = p.suggested[role.name] || (role.name === "tools" ? p.fast : "");
+        const use = pick && (gone || !p.models[role.name]) && !input.value.trim()
+          ? h("button.btn.ghost", { type: "button", onclick: () => { input.value = pick; said.className = ""; said.textContent = `Suggested: ${pick}. Press Try to check it answers.`; } }, "Use suggested")
           : null;
         const tryIt = h("button.btn.ghost", { type: "button" }, "Try");
         tryIt.onclick = async () => {

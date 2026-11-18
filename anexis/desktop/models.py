@@ -19,9 +19,10 @@ from anexis.config import DEFAULT_PROVIDERS, Provider, find_config
 from anexis.desktop.config_file import dump
 from anexis.llm.provider import OpenAIProvider, ProviderError
 
-ROLES = ("chat", "coder", "small", "embed", "vision")
+ROLES = ("chat", "tools", "coder", "small", "embed", "vision")
 ROLE_ABOUT = {
     "chat": "talking and using tools. The one that matters most",
+    "tools": "a fast model for deciding which tools to use. Makes replies with tools much quicker. Empty uses the chat model",
     "coder": "writing code when Claude cannot. Empty uses the chat model",
     "small": "quick background jobs like learning from what you say. Empty uses the chat model",
     "embed": "meaning search in memory. Empty turns that off for this provider",
@@ -54,6 +55,8 @@ NOT_FOR_CHAT = re.compile(r"embed|rerank|guard|safety|whisper|tts|asr|ocr|parse|
 PREFER = {
     "chat": [r"llama-?[4-9]", r"llama-3\.[3-9]", r"qwen-?3", r"deepseek", r"mistral-(large|medium)", r"gpt-oss", r"instruct", r"chat"],
     "embed": [r"nv-embed", r"embedqa", r"e5", r"bge", r"arctic", r"embed"],
+    # Small and quick, and known for calling tools well. The owner can try any other.
+    "tools": [r"gpt-oss-20b", r"nemotron.*nano", r"mistral-small", r"qwen-?3.*a3b", r"qwen-?3[:-]?8b", r"llama-3\.[1-9]-8b", r"8b-instruct", r"qwen-?3[:-]?4b"],
     "vision": [r"vision", r"vlm", r"-vl\b", r"llava", r"pixtral"],
 }
 
@@ -61,7 +64,7 @@ PREFER = {
 def suggest(available: list[str], role: str) -> str:
     """A reasonable model for a job out of what the provider has, or ""."""
     role = role if role in PREFER else "chat"
-    pool = [m for m in available if not NOT_FOR_CHAT.search(m)] if role == "chat" else list(available)
+    pool = [m for m in available if not NOT_FOR_CHAT.search(m)] if role in ("chat", "tools") else list(available)
     for pattern in PREFER[role]:
         hits = sorted(m for m in pool if re.search(pattern, m, re.I))
         if hits:
@@ -137,6 +140,9 @@ async def _look(entry: dict, enabled: bool, env) -> dict:
         gone = {role for role, model in entry["models"].items() if model in out["missing"]}
         wanted = gone | ({"chat"} if not entry["models"].get("chat") else set())
         out["suggested"] = {role: pick for role in wanted if (pick := suggest(out["available"], role))}
+        # A fast tool model is offered, never filled in by itself: only the owner
+        # knows if a quick model is good enough for them.
+        out["fast"] = "" if entry["models"].get("tools") else suggest(out["available"], "tools")
     return out
 
 

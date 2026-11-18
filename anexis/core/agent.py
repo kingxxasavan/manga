@@ -30,6 +30,7 @@ How to behave:
 - Talk like a sharp friend: direct, short, no filler. Match how the owner talks.
 - Use what you know about the owner below. Never ask for something you already know.
 - Use tools when they help instead of guessing. If none of the offered tools fit, call find_tools.
+- When you need several things that do not depend on each other, ask for all of those tools in the same step. They run at the same time.
 - If the owner declines a tool, do not retry it. Say what you wanted to do and carry on.
 - For school work (what is due, missing work, assignments, class slides) use the canvas_ tools and list_items. If they say Canvas is not connected, tell the owner to open Keys and press Sign in with my browser, and stop there.
 - Never sign in to websites yourself and never look for, read or use the owner's passwords, saved logins or tokens. When something needs a login, ask the owner to do it.
@@ -169,18 +170,20 @@ class Agent:
         stats = self.memory.tool_stats()
         reply = None
 
+        # A fast model picked for tool calling does the whole loop when there is
+        # one: deciding which tools to use is most of the waiting.
+        role = "tools" if getattr(self.router, "has_role", lambda r: False)("tools") else "chat"
         try:
             for _ in range(max(1, self.settings.max_steps)):
                 offered = self.registry.pick(text, self.settings.max_tools, query_vec, stats, ctx.extra_tools)
                 reply = await self.router.chat(
-                    "chat", messages, [t.schema() for t in offered],
+                    role, messages, [t.schema() for t in offered],
                     on_text=lambda piece: emit({"type": "text", "delta": piece}),
                 )
                 if not reply.tool_calls:
                     break
                 messages.append(reply.message())
-                for tool_call in reply.tool_calls:
-                    output = await self._run_tool(tool_call, ctx, result)
+                for tool_call, output in zip(reply.tool_calls, await self._run_tools(reply.tool_calls, ctx, result)):
                     messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": output})
             else:
                 note = (
@@ -223,6 +226,18 @@ class Agent:
             await self.learner.learn(text, reply)
         except Exception as e:  # learning is a bonus, it must never break a chat
             self.memory.log("learn_failed", {"error": f"{type(e).__name__}: {e}"[:300]})
+
+    async def _run_tools(self, tool_calls, ctx: ToolContext, result: dict) -> list[str]:
+        """Runs one step's tool calls. When none of them has to ask the owner
+        first they run at the same time; otherwise one by one, so questions
+        come up one at a time. Results come back in the order asked."""
+        def needs_asking(call) -> bool:
+            tool = self.registry.get(call.name)
+            return tool is not None and "_unparsed" not in call.arguments and decide(tool, call.arguments, self.settings)[0] == "ask"
+
+        if len(tool_calls) > 1 and not any(needs_asking(c) for c in tool_calls):
+            return list(await asyncio.gather(*(self._run_tool(c, ctx, result) for c in tool_calls)))
+        return [await self._run_tool(c, ctx, result) for c in tool_calls]
 
     async def _run_tool(self, tool_call, ctx: ToolContext, result: dict) -> str:
         tool = self.registry.get(tool_call.name)

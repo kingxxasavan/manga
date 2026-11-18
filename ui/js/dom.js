@@ -121,3 +121,28 @@ export function icon(name) {
   span.innerHTML = ICONS[name];
   return span.firstChild;
 }
+
+/** Brings the app window back from the tray. Works with or without the bridge. */
+export function showWindow() {
+  if (window.anexisFrame?.show) return window.anexisFrame.show();
+  if (/Electron\//.test(navigator.userAgent)) window.open("about:blank#anexis-show");
+  window.focus();
+}
+
+/** Says something the owner should see. A toast while they are looking, a
+ *  Windows notification when the window is hidden or in the background.
+ *  Clicking the notification brings Anexis back. */
+export function notify(title, body = "", kind = "") {
+  const away = document.hidden || !document.hasFocus();
+  if (away && window.Notification) {
+    try {
+      if (Notification.permission === "granted") {
+        const note = new Notification(title, { body: body.slice(0, 240), silent: false });
+        note.onclick = () => { showWindow(); note.close(); };
+        return;
+      }
+      if (Notification.permission === "default") Notification.requestPermission();
+    } catch { /* fall through to the toast */ }
+  }
+  toast(body ? `${title} ${body}` : title, kind);
+}

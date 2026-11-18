@@ -5,13 +5,13 @@
 // What it does not do: any of the assistant's work. That is all in the Python
 // code under anexis/, which this file only starts and stops.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session } = require("electron");
+const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, shell, session } = require("electron");
 const { execFile, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const BG = "#000000";
-let win = null, brain = null, deckUrl = "", deckToken = "", quitting = false, lastLog = "";
+let win = null, brain = null, deckUrl = "", deckToken = "", quitting = false, lastLog = "", tray = null, toldAboutTray = false;
 
 // ---- finding Python ------------------------------------------------------
 function pythonFor(context) {
@@ -118,6 +118,22 @@ function afterReady(context) {
       if (!process.env.ANEXIS_FRAME_SHOT) app.quit();
     });
   }
+  // For smoke tests: ANEXIS_FRAME_TRAY=1 closes the window, checks Anexis is still
+  // running in the tray, goes full screen and checks the top bar stepped aside.
+  if (process.env.ANEXIS_FRAME_TRAY) {
+    setTimeout(async () => {
+      win.close();
+      await new Promise((r) => setTimeout(r, 1500));
+      const afterClose = { running: !win.isDestroyed(), visible: win.isVisible(), tray: Boolean(tray), brain: Boolean(brain) };
+      showWindow();
+      win.setFullScreen(true);
+      await new Promise((r) => setTimeout(r, 2500));
+      const bar = await win.webContents.executeJavaScript(
+        `({ fullscreen: document.documentElement.dataset.fullscreen, barTop: Math.round(document.querySelector(".top").getBoundingClientRect().bottom) })`);
+      console.log("ANEXIS_TRAY " + JSON.stringify({ afterClose, back: win.isVisible(), ...bar }));
+      app.quit();
+    }, 5000);
+  }
   // For smoke tests: ANEXIS_FRAME_EVAL=<js> runs in the deck once it loaded and prints the answer.
   if (process.env.ANEXIS_FRAME_EVAL) {
     win.webContents.once("did-finish-load", () => setTimeout(async () => {
@@ -167,18 +183,38 @@ function createWindow(context) {
     webPreferences: {
       contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false,
       preload: path.join(__dirname, "preload.js"),
+      // Keeps the deck awake while the window is hidden in the tray, so it
+      // still hears "hey Jarvis", reminders and finished work.
+      backgroundThrottling: false,
     },
   });
   win.once("ready-to-show", () => {
-    if (startedAtLogin) { win.showInactive(); win.minimize(); } else win.show();
+    if (!startedAtLogin) win.show();  // started with Windows: stays in the tray until wanted
+  });
+  // Closing the window keeps Anexis running in the tray. Quit from the tray menu or Ctrl+Q.
+  win.on("close", (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    win.hide();
+    if (!toldAboutTray && Notification.isSupported()) {
+      toldAboutTray = true;
+      new Notification({ title: "Anexis is still running", body: "It is in the tray. Click its icon, or say hey Jarvis, to bring it back." }).show();
+    }
   });
   win.on("closed", () => { win = null; });
+  // Full screen: the deck hides its top bar until the mouse touches the top edge.
+  const fullscreen = (on) => win?.webContents.executeJavaScript(
+    `document.documentElement.dataset.fullscreen = ${JSON.stringify(on ? "on" : "off")}`).catch(() => {});
+  win.on("enter-full-screen", () => fullscreen(true));
+  win.on("leave-full-screen", () => fullscreen(false));
+  win.webContents.on("did-finish-load", () => fullscreen(win.isFullScreen()));
   win.loadURL(notePage("Starting...", context.seeded.action === "seeded" ? "First start. Setting up the app's files." : ""));
 
   // The deck is the only thing this window ever shows. Links go to the real browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     // The deck's second way to ask for the Canvas sign in, for when the bridge
     // (preload.js) is missing: it opens about:blank#anexis-canvas=<address>.
+    if (url === "about:blank#anexis-show") { showWindow(); return { action: "deny" }; }
     const ask = url.match(/^about:blank#anexis-canvas=(.*)$/);
     if (ask) {
       const tell = (detail) => win?.webContents.executeJavaScript(
@@ -313,6 +349,31 @@ ipcMain.handle("start-at-login", (event, on) => {
   return loginItem(on);
 });
 
+// ---- the tray ---------------------------------------------------------------
+function showWindow() {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function makeTray() {
+  const icon = nativeImage.createFromPath(path.join(__dirname, "assets", "icon.png")).resize({ width: 16, height: 16 });
+  tray = new Tray(icon);
+  tray.setToolTip("Anexis");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open Anexis", click: showWindow },
+    { type: "separator" },
+    { label: "Quit Anexis", click: () => app.quit() },
+  ]));
+  tray.on("click", showWindow);
+}
+
+ipcMain.handle("show-window", (event) => {
+  if (win && event.sender === win.webContents) showWindow();
+  return true;
+});
+
 ipcMain.handle("canvas-sign-in", (event, address) => {
   // Only the deck may ask, never a page that ended up in some other window.
   if (!win || event.sender !== win.webContents || !local(event.senderFrame.url)) return { ok: false, error: "Not allowed from here." };
@@ -340,16 +401,13 @@ function start(context) {
     app.quit();  // already open: the first one is brought to the front below
     return;
   }
-  app.on("second-instance", () => {
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.focus();
-  });
-  app.on("window-all-closed", () => app.quit());
+  app.on("second-instance", showWindow);  // opening Anexis again brings the running one back
+  app.on("window-all-closed", () => { if (quitting) app.quit(); });
   app.on("before-quit", () => { quitting = true; stopBrain(); });
   app.whenReady().then(() => {
     Menu.setApplicationMenu(menu(context));
     loginItemOnce();
+    makeTray();
     createWindow(context);
     startBrain(context);
   });

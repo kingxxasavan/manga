@@ -8,4 +8,6 @@ contextBridge.exposeInMainWorld("anexisFrame", {
   canvasSignIn: (url) => ipcRenderer.invoke("canvas-sign-in", String(url || "")),
   // Open Anexis when Windows starts, so it syncs with the school server right away.
   startAtLogin: (on) => ipcRenderer.invoke("start-at-login", on === undefined ? null : Boolean(on)),
+  // Brings the window back from the tray (after "hey Jarvis", or a notification click).
+  show: () => ipcRenderer.invoke("show-window"),
 });
