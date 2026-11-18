@@ -48,7 +48,7 @@ network on the right, the filesystem and a keyboard along the bottom.
 
 | Part | What it is |
 |---|---|
-| Chat | Talk to it. Tool calls show as they run. Every slash command from the terminal chat works, plus `/control`, `/models`, `/theme`, `/setup`, `/keys`, `/app`. |
+| Chat | Talk to it. Tool calls show as they run. **Chats** lists past chats, **New chat** starts a fresh one, **Clear** deletes this one (what Anexis learned stays). Every slash command from the terminal chat works, plus `/control`, `/models`, `/theme`, `/setup`, `/keys`, `/app`, `/clear`, `/chats`. |
 | Terminal | A real shell on the PC (PowerShell on Windows). |
 | Memory | What it remembers. Search, filter, add, forget. The memories used for the last reply are marked. |
 | Tools | Tool servers and their state, every tool, what is due soon. A server that failed shows what it printed. |
@@ -161,9 +161,15 @@ plan is fully used up, Anexis's own coder takes over, as before.
 
 ### Canvas
 
-Put two things in **Keys**: your school's Canvas address (the one in your browser,
-like `https://yourschool.instructure.com`) and a Canvas token (in Canvas: Account,
-Settings, New Access Token). The token can only see what you see when logged in.
+In **Keys**, type your school's Canvas address (the one in your browser, like
+`https://yourschool.instructure.com`) and press **Sign in with my browser**. Your
+school's own Canvas login opens in a window, you sign in like always, and Anexis
+keeps the signed in session on your PC. It never sees your username or password.
+When Canvas signs you out, Anexis says so and you press the button again.
+
+Without the app window (like on the school server), a Canvas token works instead:
+put it in the keys (in Canvas: Account, Settings, New Access Token). Either way
+Anexis can only see what you see when you are logged in.
 
 | Ask | What happens |
 |---|---|
@@ -176,6 +182,78 @@ own assignment list. That is what drives reminders: work due within two days
 shows in the Anexis panel, pops up once a day as a notification, and is part of
 what Anexis knows in every reply. Work that gets handed in is ticked off by itself.
 A class that hides its Files page still works, through the files its modules link.
+
+## Talk to it at school: Jarvis
+
+Jarvis is Anexis as a plain chat in a terminal. No deck, nothing but you and it.
+It runs on your server, so it is there when your PC is off, and it keeps the
+same memory as the PC app (see Sync below).
+
+```
+  jarvis online   nvidia · meta/llama-4-70b-instruct   214 memories   control ask
+  due soon: Chemistry 101: Lab 3 writeup (due 2026-11-20 23:59)
+
+ you   whats due this week
+ jarvis Two things. The chem lab is due Thursday and ...
+```
+
+Type and press Enter. Ctrl+C stops a reply. `/new` starts a fresh chat,
+`/clear` deletes this one, `/quit` leaves.
+
+### Set up the school server (once)
+
+On the server (Linux), in the repo folder:
+
+```bash
+git pull
+bash setup.sh
+```
+
+Then in `~/.anexis/.env` on the server:
+
+```
+ANEXIS_HOST=0.0.0.0
+ANEXIS_TOKEN=<a long random string, setup can make one>
+ANEXIS_UI=off
+```
+
+`ANEXIS_UI=off` leaves the deck out, so the server only answers chat. Keep it
+running with `scripts/anexis.service` (the steps are at the top of that file).
+
+### Reach it from school
+
+The safest way is [Tailscale](https://tailscale.com): install it on the server,
+your PC, and anything you use at school, and they can reach each other on any
+network without opening anything to the internet. Then any one of these:
+
+| From | Do |
+|---|---|
+| A terminal that has SSH | `ssh you@your-server` then `jarvis` |
+| Any computer with Python | Copy `jarvis.py` from the repo onto it (a USB stick works), run `python jarvis.py --setup` once with the server's address and token, then `python jarvis.py`. Nothing to install. `python jarvis.py --forget` wipes the address and token before you leave a shared computer. |
+| The server itself | `jarvis` |
+
+The connection is plain HTTP with a token, which is fine inside Tailscale. Do not
+point it at a port that is open to the whole internet.
+
+## Sync: the same memory at school and on the PC
+
+The PC app and the school server each keep their own memory, so each works on
+its own. When Anexis starts on the PC, and every 15 minutes after, the two swap
+what is new:
+
+1. Memories, including About Me and what it learned in chats.
+2. Assignments, todos, notes and reminders, Canvas ones included. Both sides read
+   Canvas, and a Canvas assignment is one row on both, never two.
+3. Chats. A chat at school shows up under Chats on the PC.
+4. Deletes. Forget a memory or clear a chat on one side and it goes on the other.
+
+When both sides changed the same thing, the newer change wins. To turn it on, in
+the app open **Keys** and fill in **School server address** (like
+`http://100.64.0.5:8765`, its Tailscale address) and **School server token** (the
+server's `ANEXIS_TOKEN`).
+
+The app opens with Windows (minimized) so the sync happens as the computer starts.
+Turn that off in the App screen.
 
 ## Set it up on a Linux server
 
@@ -485,7 +563,7 @@ Keys go in `.env` (see `.env.example`), never in `anexis.toml`.
 ```bash
 uv sync
 uv sync --extra desktop   # adds screen, keyboard and mouse control
-uv run pytest        # 389 tests
+uv run pytest        # 423 tests
 uv run ruff check anexis tests
 ```
 
@@ -528,10 +606,21 @@ Windows documents them, so expect to shake a few out on the first real run:
    way Claude Code documents them, tested against a stand in program.
 7. A real Canvas. The tools were tested against a stand in school site that
    answers the way Canvas documents.
-8. The five npx tool servers that failed on Windows (chart, docs, files, think,
-   youtube). The likely cause is several npx downloads at once fighting over
-   the npm cache, so they now start one at a time and get a second try. If one
-   still fails, Tools in the app now shows what it printed.
+8. The five npm tool servers that failed on Windows (chart, docs, files, think,
+   youtube). They all start and answer on the build machine. The likely cause on
+   Windows was npx downloading several at once into one cache, so each is now
+   installed once into its own folder (`tool-servers` in the Anexis home folder)
+   and started straight with node. If one still fails, Tools in the app shows
+   what it printed.
+9. Plain HTTP between the PC and the school server, and Tailscale. Tested with
+   two copies of Anexis on one machine.
+
+Also checked on the build machine: every tool server started and answered a real
+call (the ones that reach the web hit this machine's network block, not a bug),
+the coding agent did a real job through the real Claude Code, Jarvis in a real
+terminal and the one file `jarvis.py` against a real server, the Canvas sign in
+in the real app window against a pretend school site, and the sync between two
+copies of Anexis over HTTP.
 
 Not checked there, so check with `anexis doctor` on your server:
 
@@ -563,7 +652,9 @@ anexis/profile/         About Me
 anexis/server/          HTTP API, the lock on it, the deck's files
 anexis/desktop/         what the desktop adds: routes, terminal, setup, supervisor
 anexis/platform.py      the few places Windows and Linux differ
-anexis/cli/             the chat screen and the anexis command
+anexis/cli/             the chat screen, Jarvis, and the anexis command
+anexis/memory/sync.py   keeping the school server and the PC in step
+jarvis.py               the one file Jarvis client for any computer
 anexis/mcp_server.py    read only memory server for Claude Code
 ui/                   the deck: plain HTML, CSS and JS, no build step
 desktop/              the app window (Electron) and the installer build

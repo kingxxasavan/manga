@@ -401,6 +401,14 @@ export async function openApp(hooks) {
   const nameInput = h("input", { type: "text", value: settings.name, maxLength: 40 });
   const fx = h("input", { type: "checkbox", checked: document.documentElement.dataset.fx !== "off" });
   fx.onchange = () => hooks.setFx(fx.checked);
+  // Only the app window can start with Windows. In a plain browser this is left out.
+  let atLogin = null;
+  if (window.anexisFrame?.startAtLogin) {
+    const box = h("input", { type: "checkbox", checked: await window.anexisFrame.startAtLogin() });
+    box.onchange = async () => { box.checked = await window.anexisFrame.startAtLogin(box.checked); };
+    atLogin = h("label.check-row", box, h("div", h("b", "Open Anexis when Windows starts"),
+      h("small", "It opens minimized and syncs with the school server right away, so both know the same things.")));
+  }
 
   openSheet("App", [
     h("dl.kv",
@@ -430,6 +438,7 @@ export async function openApp(hooks) {
     ),
     h("div.form",
       h("div.field", h("span", "Theme"), h("div.swatches", Object.keys(THEMES).map(swatch))),
+      atLogin,
       h("label.check-row", fx, h("div", h("b", "Scan lines"), h("small", "The faint lines over the screen. Turn off if they bother you."))),
       h("label.field", h("span", "Name"), nameInput, h("small", "What the assistant is called.")),
     ),

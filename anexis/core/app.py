@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 from anexis.coder.claude import ClaudeRunner
 from anexis.coder.fallback import FallbackCoder
@@ -36,6 +37,7 @@ class AnexisApp:
         self.learner = Learner(self.memory, self.router)
         self.agent = Agent(settings, self.memory, self.router, self.registry, self.learner, self.events)
         self._voice = None
+        self._sync_transport = None  # tests stand in for the school server here
         self._tasks: list[asyncio.Task] = []
 
     @property
@@ -61,12 +63,40 @@ class AnexisApp:
         self._tasks.append(asyncio.create_task(self._start_tools()))
         if self.settings.consolidate_minutes > 0:
             self._tasks.append(asyncio.create_task(self._upkeep()))
-        if self.settings.ui_dir.is_dir():
+        if self.settings.ui and self.settings.ui_dir.is_dir():
             self._tasks.append(asyncio.create_task(self._watch_deck()))
         from anexis.tools.builtin import canvas as canvas_tools
 
         if canvas_tools.configured(self.settings):
             self._tasks.append(asyncio.create_task(self._canvas()))
+        if self.settings.env.get("ANEXIS_SYNC_URL"):
+            self._tasks.append(asyncio.create_task(self._sync_loop()))
+
+    async def sync_now(self) -> dict:
+        """One sync with the school server. Never raises: the answer says how it went."""
+        from anexis.memory.sync import sync_with
+
+        url = self.settings.env.get("ANEXIS_SYNC_URL", "")
+        if not url:
+            return {"ok": False, "error": "No school server is set. Add its address and token in Keys."}
+        try:
+            report = await sync_with(self.memory, url, self.settings.env.get("ANEXIS_SYNC_TOKEN", ""), self._sync_transport)
+        except Exception as e:  # offline, at school with no link, server down: try again later
+            report = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300], "at": time.time()}
+            self.memory.log("sync_failed", report)
+            self.events.publish({"type": "sync_failed", "error": report["error"]})
+            return report
+        self.memory.log("synced", report)
+        self.events.publish({"type": "synced", "from": "school", **report["received"]})
+        return report
+
+    async def _sync_loop(self) -> None:
+        """Syncs as soon as Anexis starts (which is when the computer starts,
+        when Anexis opens with Windows), then every 15 minutes."""
+        await asyncio.sleep(3)
+        while True:
+            await self.sync_now()
+            await asyncio.sleep(15 * 60)
 
     async def _canvas(self) -> None:
         """Keeps the assignment list in step with Canvas: once soon after

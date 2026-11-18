@@ -219,6 +219,20 @@ async def cmd_chat(settings: Settings, args) -> None:
     await run_repl(await ensure_server(settings))
 
 
+async def cmd_jarvis(settings: Settings, args) -> None:
+    from anexis.cli.jarvis import run_jarvis
+
+    await run_jarvis(await ensure_server(settings))
+
+
+def jarvis_main() -> None:
+    """The `jarvis` command: straight into the chat."""
+    import sys as _sys
+
+    _sys.argv = [_sys.argv[0], "jarvis", *_sys.argv[1:]]
+    main()
+
+
 async def cmd_ask(settings: Settings, args) -> None:
     """One question, one answer, for scripts. Nothing that needs a yes can run here."""
     from anexis.cli.repl import ChatSession
@@ -400,6 +414,7 @@ def main() -> None:
     train.add_argument("--offline", action="store_true", help="no model, checks everything around it")
     train.add_argument("--pack", help="another training pack file")
     sub.add_parser("mcp", help="memory server for Claude Code (used by `claude mcp add`)")
+    sub.add_parser("jarvis", help="plain chat in the terminal, nothing else (good over SSH)")
     ui = sub.add_parser("ui", help="open the deck in your browser")
     ui.add_argument("--no-browser", action="store_true", help="print the link instead of opening it")
     sub.add_parser("desktop", help=argparse.SUPPRESS)  # what the desktop app runs
@@ -421,7 +436,7 @@ def main() -> None:
     if args.command in ("desktop", "ui"):
         return cmd_desktop(settings, args)
     handler = {
-        None: cmd_chat, "ask": cmd_ask, "doctor": cmd_doctor, "aboutme": cmd_aboutme,
+        None: cmd_chat, "jarvis": cmd_jarvis, "ask": cmd_ask, "doctor": cmd_doctor, "aboutme": cmd_aboutme,
         "tools": cmd_tools, "memory": cmd_memory, "train": cmd_train,
     }[args.command]
     try:

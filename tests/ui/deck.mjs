@@ -272,6 +272,9 @@ try {
   await step("the keys screen shows how Claude is signed in and the switch to a cheaper model", async () => {
     await page.click('[data-open="keys"]');
     await page.waitForSelector(".keyrow");
+    // The screen opens at once; the Claude and Canvas parts fill in a moment later.
+    await page.waitForSelector('.prov h4:has-text("Claude for code")');
+    await page.waitForSelector('.prov input[aria-label="Canvas address"]');
     assert.match(await page.locator(".sheet-body").innerText(), /never sees your username or password/);
     // In a plain browser there is no app window to open the Canvas login, so it says to use a token.
     assert.equal(await page.locator('button:has-text("Sign in with my browser")').isDisabled(), true);
@@ -343,6 +346,31 @@ try {
     await page.waitForSelector("#banner", { state: "hidden", timeout: 30000 });
     await sendChat("back?");
     await page.waitForFunction(() => /I am here/.test(document.querySelector(".msg.ai:last-of-type")?.innerText || ""), null, { timeout: 30000 });
+  });
+
+  await step("past chats are listed, a new chat starts empty, and clear deletes a chat", async () => {
+    await page.click("#chat-list");
+    await page.waitForSelector(".chat-row");
+    assert.ok((await page.locator(".chat-row").count()) >= 1);
+    assert.match(await page.locator(".chat-row.current b").innerText(), /hi there/);
+    await page.keyboard.press("Escape");
+    await page.click("#chat-new");
+    await page.waitForSelector(".chat-empty");
+    assert.equal(await page.locator("#chat-title").innerText(), "New chat");
+    await sendChat("a throwaway chat");
+    await lastReply().locator(".msg-foot").waitFor();
+    assert.equal(await page.locator("#chat-title").innerText(), "a throwaway chat");
+    await page.click("#chat-clear");
+    assert.equal(await page.locator("#chat-clear").innerText(), "SURE?");
+    await page.click("#chat-clear");
+    await page.waitForSelector(".chat-empty");
+    await page.click("#chat-list");
+    await page.waitForSelector(".chat-row");
+    assert.doesNotMatch(await page.locator(".chats").innerText(), /a throwaway chat/);
+    await page.locator(".chat-row b").first().click();          // back to the first chat
+    await page.waitForSelector(".msg.ai");
+    assert.ok((await page.locator(".msg").count()) >= 6);
+    await shot("13a-chats");
   });
 
   await step("a phone sized window shows one panel at a time with no sideways scroll", async () => {

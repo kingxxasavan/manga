@@ -67,6 +67,7 @@ class Settings:
     workspace: Path = Path("~/anexis/workspace")
     manifest: Path = REPO_ROOT / "tools" / "manifest.yaml"
     ui_dir: Path = REPO_ROOT / "ui"  # the deck, served as plain files
+    ui: bool = True  # False: no deck at all, only the chat API (a server talked to with jarvis)
 
     host: str = "127.0.0.1"
     port: int = 8765
@@ -213,7 +214,7 @@ def load_settings(env: Mapping[str, str] | None = None, config_path=_UNSET) -> S
     for key in ("name", "workspace", "manifest", "ui_dir"):
         if key in cfg:
             flat[key] = cfg[key]
-    flat.update({k: v for k, v in section("server").items() if k in ("host", "port")})
+    flat.update({k: v for k, v in section("server").items() if k in ("host", "port", "ui")})
     for name in ("memory", "agent", "coder", "voice", "llm", "tools"):
         flat.update(section(name))
     flat["permissions"] = dict(section("permissions"))
@@ -222,6 +223,8 @@ def load_settings(env: Mapping[str, str] | None = None, config_path=_UNSET) -> S
 
     if "ANEXIS_WORKSPACE" in merged:
         flat["workspace"] = merged["ANEXIS_WORKSPACE"]
+    if merged.get("ANEXIS_UI", "").lower() in ("0", "false", "no", "off"):
+        flat["ui"] = False
     if merged.get("ANEXIS_UI_DIR"):
         flat["ui_dir"] = merged["ANEXIS_UI_DIR"]
     if "ANEXIS_HOST" in merged:

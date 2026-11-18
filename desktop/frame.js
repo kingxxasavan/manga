@@ -158,7 +158,9 @@ function createWindow(context) {
       preload: path.join(__dirname, "preload.js"),
     },
   });
-  win.once("ready-to-show", () => win.show());
+  win.once("ready-to-show", () => {
+    if (startedAtLogin) { win.showInactive(); win.minimize(); } else win.show();
+  });
   win.on("closed", () => { win = null; });
   win.loadURL(notePage("Starting...", context.seeded.action === "seeded" ? "First start. Setting up the app's files." : ""));
 
@@ -266,6 +268,30 @@ function canvasSignIn(address) {
   });
 }
 
+// ---- open when Windows starts ---------------------------------------------
+// On by default, once: Anexis syncs with the school server as it starts, so it
+// has to start with the computer. Started this way it opens minimized.
+const AT_LOGIN = "--at-login";
+const startedAtLogin = process.argv.includes(AT_LOGIN);
+
+function loginItem(on) {
+  if (!app.isPackaged) return false;  // running from source: not something to start with Windows
+  if (on !== null && on !== undefined) app.setLoginItemSettings({ openAtLogin: on, args: [AT_LOGIN] });
+  return app.getLoginItemSettings({ args: [AT_LOGIN] }).openAtLogin;
+}
+
+function loginItemOnce() {
+  const marker = path.join(app.getPath("userData"), "start-at-login-set");
+  if (!app.isPackaged || fs.existsSync(marker)) return;
+  loginItem(true);
+  try { fs.writeFileSync(marker, "on\n"); } catch { /* asked again next time, no harm */ }
+}
+
+ipcMain.handle("start-at-login", (event, on) => {
+  if (!win || event.sender !== win.webContents || !local(event.senderFrame.url)) return false;
+  return loginItem(on);
+});
+
 ipcMain.handle("canvas-sign-in", (event, address) => {
   // Only the deck may ask, never a page that ended up in some other window.
   if (!win || event.sender !== win.webContents || !local(event.senderFrame.url)) return { ok: false, error: "Not allowed from here." };
@@ -302,6 +328,7 @@ function start(context) {
   app.on("before-quit", () => { quitting = true; stopBrain(); });
   app.whenReady().then(() => {
     Menu.setApplicationMenu(menu(context));
+    loginItemOnce();
     createWindow(context);
     startBrain(context);
   });

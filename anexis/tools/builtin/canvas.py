@@ -308,13 +308,20 @@ async def sync(memory, canvas: Canvas, days: int = 21) -> dict:
     for key, a in wanted.items():
         title = f"{a['course']}: {a['title']}" if a["course"] else a["title"]
         body = f"{'MISSING on Canvas. ' if a['missing'] else 'From Canvas. '}{a['url']}"
-        row = db.execute("SELECT * FROM items WHERE id=?", (known.get(key),)).fetchone() if key in known else None
+        # The id comes from Canvas itself, so the school server and the PC, which
+        # both read Canvas, end up with the same row instead of two copies.
+        uid = f"canvas:{key}"
+        row = db.execute("SELECT * FROM items WHERE uid=?", (uid,)).fetchone()
+        if row is None and key in known:  # made before ids came from Canvas
+            row = db.execute("SELECT * FROM items WHERE id=?", (known[key],)).fetchone()
         if row is None:
-            cur = db.execute("INSERT INTO items (type, title, body, due_at, created_at) VALUES ('assignment',?,?,?,?)",
-                             (title, body, a["due"], time.time()))
+            cur = db.execute("INSERT INTO items (uid, type, title, body, due_at, created_at) VALUES (?, 'assignment',?,?,?,?)",
+                             (uid, title, body, a["due"], time.time()))
             known[key] = cur.lastrowid
             report["added"] += 1
-        elif (row["title"], row["body"], row["due_at"]) != (title, body, a["due"]) and not row["done"]:
+            continue
+        known[key] = row["id"]
+        if (row["title"], row["body"], row["due_at"]) != (title, body, a["due"]) and not row["done"]:
             db.execute("UPDATE items SET title=?, body=?, due_at=? WHERE id=?", (title, body, a["due"], row["id"]))
             report["updated"] += 1
     for key in [k for k in known if k not in wanted]:

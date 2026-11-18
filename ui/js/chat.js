@@ -2,11 +2,13 @@
 // it asks first, and the slash commands.
 
 import * as api from "./api.js";
-import { $, h, markdown, shortArgs, toast } from "./dom.js";
+import { $, ago, h, markdown, shortArgs, toast } from "./dom.js";
 
 const MODES = ["general", "school", "work", "project"];
 const COMMANDS = [
-  ["/new", "start a fresh conversation (memory stays)"],
+  ["/new", "start a fresh chat (this one is kept under Chats)"],
+  ["/clear", "delete this chat (what was learned stays)"],
+  ["/chats", "your past chats"],
   ["/mode", "general, school, work or project"],
   ["/code", "build something: /code a script that renames my photos"],
   ["/remember", "save something on purpose"],
@@ -100,6 +102,7 @@ export async function send(text) {
   if (text.startsWith("/")) return command(text);
   if (busy) return toast("Still working on the last one. Press STOP to cut it short.");
   message("you", text);
+  if ($("#chat-title")?.textContent === "New chat") setTitle(text.replace(/\s+/g, " ").slice(0, 80));
   const reply = message("ai");
   const cursor = h("span.cursor");
   reply.body.append(cursor);
@@ -236,6 +239,57 @@ export function newConversation() {
   sessionId = "";
   localStorage.removeItem("anexis-session");
   showEmpty();
+  setTitle("New chat");
+}
+
+function setTitle(text) {
+  const el = $("#chat-title");
+  if (el) { el.textContent = text; el.title = text; }
+}
+
+/** Clear chat: this conversation is deleted. Asks once by arming the button. */
+export async function clearConversation(button) {
+  if (busy) return toast("Wait for the reply to finish, or press STOP first.");
+  if (button && !button.dataset.sure) {
+    button.dataset.sure = "1";
+    button.textContent = "Sure?";
+    setTimeout(() => { delete button.dataset.sure; button.textContent = "Clear"; }, 3000);
+    return;
+  }
+  if (button) { delete button.dataset.sure; button.textContent = "Clear"; }
+  if (sessionId) {
+    try { await api.del(`/sessions/${encodeURIComponent(sessionId)}`); } catch (e) { return toast(e.message, "bad"); }
+  }
+  newConversation();
+  toast("Chat cleared. What Anexis learned from it is still in Memory.");
+}
+
+/** Switches to one of the past chats. */
+export async function openConversation(id) {
+  if (busy) return toast("Wait for the reply to finish, or press STOP first.");
+  sessionId = id;
+  localStorage.setItem("anexis-session", id);
+  await loadHistory();
+}
+
+/** The list of past chats, for the Chats screen. */
+export function chatList(rows, done) {
+  if (!rows.length) return h("div.empty", "No chats yet.");
+  return h("div.chats", rows.map((row) => {
+    const remove = h("button.btn.ghost", { type: "button" }, "Delete");
+    const el = h(`div.chat-row${row.id === sessionId ? ".current" : ""}`,
+      h("button", { type: "button", style: "text-align:left;min-width:0", onclick: async () => { await openConversation(row.id); done(); } }, h("b", row.title)),
+      h("button.btn", { type: "button", onclick: async () => { await openConversation(row.id); done(); } }, "Open"),
+      remove,
+      h("small", `${row.messages} messages · ${row.mode} · ${ago(row.updated_at)}`));
+    remove.onclick = async () => {
+      if (!remove.dataset.sure) { remove.dataset.sure = "1"; remove.textContent = "Sure?"; return; }
+      try { await api.del(`/sessions/${encodeURIComponent(row.id)}`); } catch (e) { return toast(e.message, "bad"); }
+      if (row.id === sessionId) newConversation();
+      el.remove();
+    };
+    return el;
+  }));
 }
 
 async function command(line) {
@@ -244,7 +298,9 @@ async function command(line) {
   const open = (which) => hooks.open?.(which);
   switch (head.toLowerCase()) {
     case "help": return note(COMMANDS.map(([c, about]) => `**${c}**  ${about}`).join("\n"));
-    case "new": newConversation(); return toast("Fresh conversation. Memory stays.");
+    case "new": newConversation(); return toast("Fresh chat. The last one is under Chats.");
+    case "clear": return clearConversation();
+    case "chats": return hooks.openChats?.();
     case "mode": return note(setMode(arg) ? `Mode is now **${arg}**.` : `Modes: ${MODES.join(", ")}`);
     case "code": return arg ? send(`Use the code_task tool to build this: ${arg}`) : note("Usage: /code what to build");
     case "remember": return arg ? hooks.remember?.(arg) : note("Usage: /remember something about you");
@@ -284,6 +340,8 @@ export async function loadHistory() {
   try {
     const past = await api.get(`/sessions/${encodeURIComponent(sessionId)}/messages`);
     setMode(past.mode);
+    const first = past.messages.find((m) => m.role === "user");
+    setTitle(first ? first.content.replace(/\s+/g, " ").slice(0, 80) : "New chat");
     if (!past.messages.length) return showEmpty();
     log().replaceChildren();
     for (const m of past.messages) {

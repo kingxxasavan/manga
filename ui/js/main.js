@@ -239,6 +239,11 @@ function onEvent(event) {
   else if (event.type === "reload") reloadDeck(event.files || []);
   else if (event.type === "settings") { showControl(event.control); showName(event.name); }
   else if (event.type === "canvas_synced") { pulse(); if (event.added) toast(`Canvas: ${event.added} new ${event.added === 1 ? "assignment" : "assignments"} added to your list.`); }
+  else if (event.type === "synced" && event.from === "school") {
+    const got = (event.memories || 0) + (event.items || 0) + (event.messages || 0);
+    if (got) { toast(`Synced with the school server: ${got} new ${got === 1 ? "thing" : "things"} from school.`); memory.refresh(); pulse(); }
+  }
+  else if (event.type === "sync_failed") $('[data-open="keys"]').title = `School sync: ${event.error}`;
   else if (event.type === "canvas_failed") toast(`Canvas could not be reached: ${event.error}`, "bad");
   else if (event.type === "brain_restarting") toast(`Code changed (${event.files.join(", ")}). Restarting the brain.`);
   else if (event.type === "brain_error") {
@@ -312,6 +317,18 @@ async function boot(state) {
   el.hidden = true;
 }
 
+async function openChats() {
+  overlays.openSheet("Chats", h("div.empty", "Loading..."));
+  try {
+    const rows = await api.get("/sessions");
+    overlays.openSheet("Chats", [
+      h("p", "Your past chats, newest first. Deleting one does not make Anexis forget what it learned there."),
+      chat.chatList(rows, () => overlays.closeSheet()),
+      h("div.sheet-foot", h("button.btn.primary", { type: "button", onclick: () => { overlays.closeSheet(); chat.newConversation(); } }, "New chat")),
+    ]);
+  } catch (e) { overlays.openSheet("Chats", h("p", e.message)); }
+}
+
 // ---- start ---------------------------------------------------------------
 function open(which) {
   return ({
@@ -344,6 +361,7 @@ async function start() {
     searchMemory: (words) => { show("memory"); memory.search(words); },
     why: () => { show("memory"); chat.note("The memories that shaped the last reply are marked in the Memory tab."); },
     showTools: () => show("tools"),
+    openChats,
     setControl,
     setTheme: (value) => setTheme(value) && chat.note(`Theme is now **${value}**.`),
     themes: THEMES,
@@ -362,6 +380,9 @@ async function start() {
   setInterval(() => !document.hidden && pulseClaude(), 120_000);
 
   $("#control").addEventListener("click", controlSheet);
+  $("#chat-new").addEventListener("click", () => { chat.newConversation(); $("#input").focus(); });
+  $("#chat-clear").addEventListener("click", (e) => chat.clearConversation(e.currentTarget));
+  $("#chat-list").addEventListener("click", openChats);
   $("#mic").addEventListener("click", () => voice.toggleMic((text) => chat.send(text)));
   for (const button of $$("[data-open]")) button.addEventListener("click", () => open(button.dataset.open));
   for (const tab of $$(".tabs [data-center]")) tab.addEventListener("click", () => show(tab.dataset.center));

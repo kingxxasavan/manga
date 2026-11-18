@@ -94,6 +94,46 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
+NOW_SQL = "((julianday('now') - 2440587.5) * 86400.0)"
+SYNC_SCHEMA = f"""
+CREATE UNIQUE INDEX IF NOT EXISTS memories_uid ON memories (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS items_uid ON items (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS messages_uid ON messages (uid);
+CREATE TABLE IF NOT EXISTS tombstones (uid TEXT PRIMARY KEY, kind TEXT NOT NULL, at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS kv_times (key TEXT PRIMARY KEY, at REAL NOT NULL);
+CREATE TRIGGER IF NOT EXISTS memories_uid_new AFTER INSERT ON memories WHEN new.uid IS NULL BEGIN
+  UPDATE memories SET uid=lower(hex(randomblob(8))) WHERE id=new.id;
+END;
+CREATE TRIGGER IF NOT EXISTS items_uid_new AFTER INSERT ON items BEGIN
+  UPDATE items SET uid=coalesce(new.uid, lower(hex(randomblob(8)))), updated_at=coalesce(new.updated_at, new.created_at) WHERE id=new.id;
+END;
+CREATE TRIGGER IF NOT EXISTS messages_uid_new AFTER INSERT ON messages WHEN new.uid IS NULL BEGIN
+  UPDATE messages SET uid=lower(hex(randomblob(8))) WHERE id=new.id;
+END;
+-- A change worth syncing moves updated_at. Confidence is left out on purpose:
+-- the hourly upkeep lowers it a little on many rows, and that is not news.
+CREATE TRIGGER IF NOT EXISTS memories_touch AFTER UPDATE OF text, kind, key, pinned, superseded_by ON memories
+  WHEN new.updated_at IS old.updated_at BEGIN
+  UPDATE memories SET updated_at={NOW_SQL} WHERE id=new.id;
+END;
+CREATE TRIGGER IF NOT EXISTS items_touch AFTER UPDATE OF type, title, body, due_at, done ON items
+  WHEN new.updated_at IS old.updated_at BEGIN
+  UPDATE items SET updated_at={NOW_SQL} WHERE id=new.id;
+END;
+CREATE TRIGGER IF NOT EXISTS memories_gone AFTER DELETE ON memories WHEN old.uid IS NOT NULL BEGIN
+  INSERT OR REPLACE INTO tombstones (uid, kind, at) VALUES (old.uid, 'memory', {NOW_SQL});
+END;
+CREATE TRIGGER IF NOT EXISTS items_gone AFTER DELETE ON items WHEN old.uid IS NOT NULL BEGIN
+  INSERT OR REPLACE INTO tombstones (uid, kind, at) VALUES (old.uid, 'item', {NOW_SQL});
+END;
+CREATE TRIGGER IF NOT EXISTS sessions_gone AFTER DELETE ON sessions BEGIN
+  INSERT OR REPLACE INTO tombstones (uid, kind, at) VALUES (old.id, 'session', {NOW_SQL});
+END;
+CREATE TRIGGER IF NOT EXISTS kv_time AFTER INSERT ON kv BEGIN
+  INSERT OR REPLACE INTO kv_times (key, at) VALUES (new.key, {NOW_SQL});
+END;
+"""
+
 STOPWORDS = frozenset(
     ["a", "an", "and", "are", "as", "at", "be", "but", "by", "do", "does", "for", "from", "had", "has", "have", "how", "i", "if", "in", "is", "it", "its", "me", "my", "of", "on", "or", "so", "that", "the", "their", "them", "then", "there", "these", "they", "this", "to", "was", "we", "were", "what", "when", "where", "which", "who", "why", "will", "with", "you", "your", "not", "no", "can", "could", "should", "would", "s", "t", "im"]
 )
@@ -171,11 +211,26 @@ class Memory:
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.execute("PRAGMA foreign_keys=ON")
             self.db.executescript(SCHEMA)
+            self._add_sync_columns()
             self.db.commit()
         self.db.row_factory = sqlite3.Row
         self._vec_cache: dict[str, tuple[list[int], np.ndarray]] = {}
         self._words_cache: set[str] | None = None
         self._data_version = None
+
+    def _add_sync_columns(self) -> None:
+        """What syncing two copies of Anexis needs (the school server and the
+        PC): an id that means the same row on both, a time for every change,
+        and a note of what was deleted, so a delete reaches the other side."""
+        for table in ("memories", "items", "messages"):
+            columns = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            if "uid" not in columns:
+                self.db.execute(f"ALTER TABLE {table} ADD COLUMN uid TEXT")
+            if table == "items" and "updated_at" not in columns:
+                self.db.execute("ALTER TABLE items ADD COLUMN updated_at REAL")
+                self.db.execute("UPDATE items SET updated_at=created_at")
+            self.db.execute(f"UPDATE {table} SET uid=lower(hex(randomblob(8))) WHERE uid IS NULL")
+        self.db.executescript(SYNC_SCHEMA)
 
     def close(self) -> None:
         self.db.close()
@@ -197,6 +252,30 @@ class Memory:
     def session(self, session_id: str) -> dict | None:
         row = self.db.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
         return dict(row) if row else None
+
+    def list_sessions(self, limit: int = 50) -> list[dict]:
+        """Conversations that have something in them, newest first, each with a
+        title made from its first message."""
+        rows = self.db.execute(
+            "SELECT s.id, s.mode, s.started_at, s.updated_at, COUNT(m.id) AS count, "
+            "(SELECT content FROM messages WHERE session_id=s.id AND role='user' ORDER BY id LIMIT 1) AS first "
+            "FROM sessions s JOIN messages m ON m.session_id=s.id GROUP BY s.id ORDER BY s.updated_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        out = []
+        for r in rows:
+            title = " ".join(str(r["first"] or "").split())
+            out.append({"id": r["id"], "mode": r["mode"], "started_at": r["started_at"], "updated_at": r["updated_at"],
+                        "messages": r["count"], "title": (title[:70] + "...") if len(title) > 70 else title or "(no words)"})
+        return out
+
+    def delete_session(self, session_id: str) -> bool:
+        """Clears one conversation for good. What Anexis learned from it stays
+        in memory: that is kept apart from the chat itself."""
+        self.db.execute("DELETE FROM messages WHERE session_id=?", (session_id,))
+        gone = self.db.execute("DELETE FROM sessions WHERE id=?", (session_id,)).rowcount
+        self.db.commit()
+        return bool(gone)
 
     def add_message(self, session_id: str, role: str, content: str, meta: dict | None = None) -> int:
         now = time.time()

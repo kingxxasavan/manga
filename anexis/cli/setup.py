@@ -107,6 +107,12 @@ KEY_OPTIONS = [
     KeyOption("CANVAS_TOKEN", "Canvas token", "Canvas token (only if you are not using Sign in with my browser)",
               "the same as signing in with the browser, for when the app window is not used, like on a server",
               "in Canvas: Account, Settings, New Access Token"),
+    KeyOption("ANEXIS_SYNC_URL", "School server address", "School server: its address",
+              "keeps memory, About Me, assignments and chats the same here and on the school server, every start and every 15 minutes",
+              "the address the school server listens on, like http://100.64.0.5:8765", ("http://", "https://"), secret=False),
+    KeyOption("ANEXIS_SYNC_TOKEN", "School server token", "School server: its token",
+              "lets this computer sync with the school server",
+              "on the school server, the ANEXIS_TOKEN line in ~/.anexis/.env"),
     KeyOption("GITHUB_TOKEN", "GitHub token", "GitHub",
               "code search, issues and pull requests",
               "github.com/settings/tokens", ("ghp_", "github_pat_", "gho_")),
@@ -268,6 +274,8 @@ def key_warning(name: str, value: str) -> str:
     prefixes = next((o.prefixes for o in KEY_OPTIONS if o.env == name), ())
     if name == "CANVAS_URL":
         return "" if value.startswith("https://") else "That should be the full address, starting with https://. Saved anyway."
+    if name == "ANEXIS_SYNC_URL":
+        return "" if value.startswith(("http://", "https://")) else "That should be a full address, starting with http:// or https://. Saved anyway."
     if prefixes and not value.startswith(prefixes):
         return f"Heads up: these usually start with {' or '.join(prefixes)}. Saved anyway."
     if len(value) < 12:

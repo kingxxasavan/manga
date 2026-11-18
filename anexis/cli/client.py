@@ -35,6 +35,12 @@ class AnexisClient:
                 if line.strip():
                     yield json.loads(line)
 
+    async def stop(self, session_id: str | None = None) -> int:
+        return (await self._call("POST", "/chat/stop", json={"session_id": session_id} if session_id else {})).json()["stopped"]
+
+    async def clear(self, session_id: str) -> bool:
+        return (await self._call("DELETE", f"/sessions/{session_id}")).json()["deleted"]
+
     async def confirm(self, ask_id: str, allow: bool) -> None:
         await self._call("POST", "/confirm", json={"id": ask_id, "allow": allow})
 

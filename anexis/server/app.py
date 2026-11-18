@@ -244,6 +244,31 @@ def create_app(anexis) -> FastAPI:
     async def memory_forget(memory_id: int):
         return {"forgotten": anexis.memory.forget(memory_id)}
 
+    @app.post("/sync")
+    async def sync_answer(body: dict):
+        """Another copy of Anexis (the PC app) syncing with this one."""
+        from anexis.memory.sync import answer
+
+        try:
+            since = float(body.get("since") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "since must be a number") from None
+        reply = await asyncio.to_thread(answer, anexis.memory, since, body.get("changes") or {})
+        if any(reply["applied"].values()):
+            anexis.events.publish({"type": "synced", "from": "other", **reply["applied"]})
+        return reply
+
+    @app.post("/sync/now")
+    async def sync_now():
+        """Syncs with the school server right now (the PC side)."""
+        return await anexis.sync_now()
+
+    @app.get("/sync/state")
+    async def sync_state():
+        from anexis.memory.sync import LAST_SYNC
+
+        return {"server": settings.env.get("ANEXIS_SYNC_URL", ""), "last": anexis.memory.kv_get(LAST_SYNC)}
+
     @app.get("/why")
     async def why(session_id: str):
         last = anexis.memory.last_message(session_id, "assistant")
@@ -289,6 +314,6 @@ def create_app(anexis) -> FastAPI:
     from anexis.desktop.routes import attach
 
     attach(app, anexis)
-    if settings.ui_dir.is_dir():
+    if settings.ui and settings.ui_dir.is_dir():
         app.mount("/ui", DeckFiles(directory=settings.ui_dir, html=True), name="ui")
     return app

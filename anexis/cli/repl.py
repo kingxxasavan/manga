@@ -27,6 +27,7 @@ HELP = """
  /voice             turn voice on or off (Enter to talk, Enter to stop)
  /doctor            check that every part works
  /new               start a fresh conversation
+ /clear             delete this conversation (what was learned stays)
  /quit              leave
 """
 
@@ -170,6 +171,11 @@ class ChatSession:
         elif name == "new":
             self.session_id = None
             self._dim("Fresh conversation. I still remember you.")
+        elif name == "clear":
+            if self.session_id:
+                await c.clear(self.session_id)
+            self.session_id = None
+            self._dim("Cleared. What I learned from it stays in memory.")
         elif name == "mode":
             if arg in MODES:
                 self.mode = arg

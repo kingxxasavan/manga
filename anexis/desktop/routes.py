@@ -75,6 +75,15 @@ def attach(app, anexis) -> None:
         mode = (body or {}).get("mode")
         return {"session_id": anexis.memory.ensure_session(None, mode if mode in MODES else None)}
 
+    @app.get("/sessions")
+    async def sessions_list():
+        return anexis.memory.list_sessions(60)
+
+    @app.delete("/sessions/{session_id}")
+    async def session_delete(session_id: str):
+        """Clear chat: the conversation is deleted. What was learned stays."""
+        return {"deleted": anexis.memory.delete_session(session_id)}
+
     @app.get("/sessions/{session_id}/messages")
     async def session_messages(session_id: str):
         session = anexis.memory.session(session_id)
