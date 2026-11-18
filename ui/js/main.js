@@ -18,7 +18,7 @@ import * as voice from "./voice.js";
 const root = document.documentElement, deck = $("#deck");
 const THEMES = ["tron", "ion", "ember", "verdant", "ultra"];
 const CENTER = ["chat", "terminal", "memory", "tools"];
-let control = "", name = "Anexis", reloadWaiting = false, linkDown = false, claude = null, due = [];
+let voiceState = "", control = "", name = "Anexis", reloadWaiting = false, linkDown = false, claude = null, due = [];
 
 // ---- look ----------------------------------------------------------------
 function setTheme(value) {
@@ -120,6 +120,7 @@ function drawBrain() {
       rows.push(h("div.brain-row", h("span", "claude"), h("b", claude.plan ? "signed in with your plan" : "signed in with a key")));
     }
   }
+  if (voiceState) rows.push(h("div.brain-row", h("span", "voice"), h("b", voiceState === "idle" ? "listening" : voiceState)));
   rows.push(h("div.brain-row", h("span", "due"), due.length ? h("b.warn", `${due.length} in the next 2 days`) : h("b", "nothing in the next 2 days")));
   for (const line of due.slice(0, 3)) rows.push(h("div.due-line", { title: line }, line));
   $("#brain-body").replaceChildren(...rows);
@@ -256,7 +257,18 @@ function onEvent(event) {
     if (chat.state.sessionId === "voice") chat.openConversation("voice");
     else toast(`${name}: ${event.text.slice(0, 200)}`);
   }
-  else if (event.type === "wake_failed") toast(`Wake word: ${event.error}`, "bad");
+  else if (event.type === "wake_failed") toast(`Voice: ${event.error}`, "bad");
+  // The Hail Mary JARVIS voice
+  else if (event.type === "voice_heard") { if (event.directed) toast(`Heard: ${event.text}`); }
+  else if (event.type === "voice_state") { voiceState = event.value; drawBrain(); }
+  else if (event.type === "voice_error") toast(`Voice: ${event.message}`, "bad");
+  else if (event.type === "voice_approval") {
+    showWindow();
+    const answerIt = async (approved) => { banner(""); try { await api.post("/voice/approval", { id: event.id, approved }); } catch (e) { toast(e.message, "bad"); } };
+    banner(`JARVIS asks: may I use ${(event.tool || "a tool").replace(/_/g, " ")}? Say "Jarvis, go ahead" or "Jarvis, cancel", or click.`, "",
+      h("span", h("button", { type: "button", onclick: () => answerIt(true) }, "go ahead"), "  ", h("button", { type: "button", onclick: () => answerIt(false) }, "cancel")));
+  }
+  else if (event.type === "voice_approval_done") banner("");
   else if (event.type === "canvas_failed") toast(`Canvas could not be reached: ${event.error}`, "bad");
   else if (event.type === "brain_restarting") toast(`Code changed (${event.files.join(", ")}). Restarting the brain.`);
   else if (event.type === "brain_error") {

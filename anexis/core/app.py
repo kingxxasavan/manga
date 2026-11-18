@@ -77,26 +77,40 @@ class AnexisApp:
         if self.settings.voice_wake:
             self.start_wake()
 
-    def start_wake(self, **parts) -> tuple[bool, str]:
-        """Starts listening for the wake word. `parts` swaps pieces (tests)."""
-        from anexis.voice.wake import VOICE_SESSION, WakeListener, can_wake
+    def start_wake(self, engine: str | None = None, **parts) -> tuple[bool, str]:
+        """Starts listening. The Hail Mary JARVIS voice when it is installed (or
+        asked for), else the simple wake word loop. `parts` swaps pieces (tests)."""
+        from anexis.voice import wake as simple
 
         if self.wake and self.wake.state not in ("off", "failed"):
             return True, ""
+        choice = engine or self.settings.voice_engine
+        simple_parts = {"ears", "detector", "transcribe", "speak", "play"} & set(parts)
+        if choice in ("auto", "hailmary") and not simple_parts:
+            from anexis.voice.hailmary import engine as hailmary
+
+            ok, why = (True, "") if parts else hailmary.available(self.settings)
+            if ok:
+                self.wake = hailmary.HailMaryEngine(self, **parts)
+                self.wake.start()
+                return True, ""
+            if choice == "hailmary":
+                self.memory.log("wake_failed", {"error": why})
+                return False, why
         if not parts:
-            ok, why = can_wake()
+            ok, why = simple.can_wake()
             if not ok:
                 self.memory.log("wake_failed", {"error": why})
                 return False, why
 
         async def answer(text: str) -> str:
-            self.memory.ensure_session(VOICE_SESSION, "general")
-            result = await self.agent.run_turn(VOICE_SESSION, text)
+            self.memory.ensure_session(simple.VOICE_SESSION, "general")
+            result = await self.agent.run_turn(simple.VOICE_SESSION, text)
             reply = result.get("text") or result.get("error") or ""
-            self.events.publish({"type": "voice_reply", "heard": text, "text": reply, "session_id": VOICE_SESSION})
+            self.events.publish({"type": "voice_reply", "heard": text, "text": reply, "session_id": simple.VOICE_SESSION})
             return reply
 
-        self.wake = WakeListener(self, answer, threshold=self.settings.wake_threshold, **parts)
+        self.wake = simple.WakeListener(self, answer, threshold=self.settings.wake_threshold, **parts)
         self.wake.start()
         return True, ""
 

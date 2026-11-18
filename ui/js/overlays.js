@@ -435,12 +435,14 @@ export async function openApp(hooks) {
   let wake = { on: false, available: false, why: "", word: "hey jarvis" };
   try { wake = await api.get("/voice/wake"); } catch { /* shown as off */ }
   const wakeBox = h("input", { type: "checkbox", checked: wake.on });
-  const wakeSaid = h("small", wake.available ? `Say "${wake.word}", then talk. Works with the window hidden in the tray.` : wake.why);
+  const wakeSaid = h("small", !wake.available ? wake.why : wake.engine === "hailmary"
+    ? `Your Hail Mary JARVIS voice. Say "Jarvis" and talk; talk over it to interrupt. Works with the window hidden in the tray.`
+    : `Say "${wake.word}", then talk. Works with the window hidden in the tray.`);
   wakeBox.onchange = async () => {
     try {
       const now = await api.post("/voice/wake", { on: wakeBox.checked });
       wakeBox.checked = now.on;
-      wakeSaid.textContent = now.on ? `Listening for "${now.word}".` : "Off.";
+      wakeSaid.textContent = now.on ? `Listening for "${now.word}" (${now.engine === "hailmary" ? "Hail Mary JARVIS voice" : "simple voice"}).` : "Off.";
     } catch (err) { wakeBox.checked = false; wakeSaid.textContent = err.message; }
   };
   const wakeRow = h("label.check-row", wakeBox, h("div", h("b", `Listen for "${wake.word}"`), wakeSaid));

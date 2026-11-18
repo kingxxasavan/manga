@@ -157,11 +157,29 @@ def attach(app, anexis) -> None:
 
     @app.get("/voice/wake")
     async def wake_state():
+        from anexis.voice.hailmary import engine as hailmary
         from anexis.voice.wake import can_wake
 
-        ok, why = can_wake()
+        simple = ("simple", settings.wake_word.replace("_", " "))
+        if settings.voice_engine == "simple":
+            (ok, why), (engine, word) = can_wake(), simple
+        else:
+            (ok, why), (engine, word) = hailmary.available(settings), ("hailmary", "jarvis")
+            if not ok and settings.voice_engine != "hailmary" and can_wake()[0]:
+                ok, why, (engine, word) = True, "", simple
+        running = getattr(anexis.wake, "name", "simple") if anexis.wake else ""
         return {"on": settings.voice_wake, "state": anexis.wake.state if anexis.wake else "off",
-                "available": ok, "why": why, "word": settings.wake_word.replace("_", " ")}
+                "available": ok, "why": why, "word": word, "engine": running or engine,
+                "attention": settings.voice_attention}
+
+    @app.post("/voice/approval")
+    async def voice_approval(body: dict):
+        """A spoken approval answered by click instead (Hail Mary's GUI approvals)."""
+        conversation = getattr(anexis.wake, "conversation", None)
+        if conversation is None:
+            raise HTTPException(404, "JARVIS is not listening")
+        conversation.receive({"type": "approval", "id": str(body.get("id", "")), "approved": bool(body.get("approved"))})
+        return {"ok": True}
 
     @app.post("/voice/wake")
     async def wake_switch(body: dict):

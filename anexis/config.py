@@ -112,7 +112,17 @@ class Settings:
     claude_backoff_minutes: int = 30
     fallback_rounds: int = 12
 
-    voice_wake: bool = False      # listen in the background for the wake word
+    voice_wake: bool = False      # listen in the background ("jarvis")
+    # "auto": the Hail Mary JARVIS voice when it is installed, else the simple one.
+    voice_engine: str = "auto"
+    voice_title: str = "sir"                 # what JARVIS calls the owner
+    voice_attention: str = "smart"           # wake, smart or always (see voice/hailmary/attention.py)
+    voice_wake_words: tuple = ("jarvis", "j", "jay")
+    voice_stt_model: str = "nemo-parakeet-tdt-0.6b-v2"
+    voice_stt_quantization: str = "fp32"
+    voice_host_api: str = "Windows WASAPI"
+    voice_input: str = ""                    # "" = the system's default microphone
+    voice_output: str = ""
     wake_word: str = "hey_jarvis"  # an openWakeWord model name
     wake_threshold: float = 0.5
     stt_model: str = "base"

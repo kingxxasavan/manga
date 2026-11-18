@@ -165,22 +165,32 @@ async def step_tools(settings, wanted, say, run: Run, fetch: Fetch) -> str:
 
 
 async def step_voice(settings, wanted, say, run: Run, fetch: Fetch) -> str:
+    """The JARVIS voice from Hail Mary: its packages, then its models. With an
+    Nvidia card the speech models run on it (much quicker), else on the CPU."""
     uv = shutil.which("uv", path=tool_path())
     if not uv:
         raise StepFailed("uv is missing, so the voice packages cannot be installed.")
-    say("installing speech to text and text to speech")
-    packages = ["faster-whisper>=1.1", "piper-tts", "sounddevice>=0.5"]
-    if IS_WINDOWS:  # "hey Jarvis": openWakeWord needs a runtime that only exists for Windows here
-        packages += ["openwakeword>=0.6", "onnxruntime>=1.17"]
-    code = await run([uv, "pip", "install", "--python", sys.executable, "--break-system-packages", *packages], say, env=_tool_env())
+    gpu = bool(shutil.which("nvidia-smi"))
+    packages = ["numpy", "sounddevice>=0.5", "soxr>=1.0", "livekit>=1.0", "onnx-asr[hub]>=0.12", "piper-tts>=1.3",
+                "huggingface-hub", "faster-whisper>=1.1"]
+    args = [uv, "pip", "install", "--python", sys.executable, "--break-system-packages"]
+    if gpu:
+        # The GPU build, and never the plain one next to it (they clash), as Hail Mary does.
+        override = settings.home / "voice-overrides.txt"
+        override.write_text("onnxruntime; sys_platform == 'never'\n", encoding="utf-8")
+        packages.append("onnxruntime-gpu[cuda,cudnn]")
+        args += ["--override", str(override)]
+    else:
+        packages.append("onnxruntime>=1.17")
+    say("installing the JARVIS voice" + (" for your Nvidia card" if gpu else ""))
+    code = await run([*args, *packages], say, env=_tool_env())
     if code != 0:
         raise StepFailed("The voice packages did not install. See the lines above for why.")
-    say(f"downloading the voice {settings.tts_voice}")
-    code = await run([sys.executable, "-m", "piper.download_voices", settings.tts_voice,
-                      "--data-dir", str(settings.home / "voices")], say, env=_tool_env())
+    say("downloading the voice models (the JARVIS voice, speech detection, end of turn, speech to text)")
+    code = await run([sys.executable, "-m", "anexis.voice.hailmary.models"], say, env=_tool_env(), cwd=str(REPO_ROOT))
     if code != 0:
-        raise StepFailed("The voice file did not download. Press retry when the internet is back.")
-    return "installed"
+        raise StepFailed("The voice models did not download. Press retry when the internet is back.")
+    return "installed. Turn on Listen for jarvis in App"
 
 
 STEPS = {"ollama": step_ollama, "models": step_models, "claude": step_claude, "tools": step_tools, "voice": step_voice}

@@ -132,11 +132,32 @@ Windows notification says so. Clicking it brings Anexis back.
 
 ### Hey Jarvis
 
-In App, turn on **Listen for "hey jarvis"**. Then say "hey Jarvis" and talk:
-the window comes back, it writes down what you said, answers, and says the
-answer out loud. It works with the window hidden in the tray. Everything runs
-on your PC (openWakeWord for the wake word, Whisper for your words, Piper for
-its voice). It needs the voice download: open Setup and tick Voice.
+The voice is the JARVIS voice from Hail Mary, moved in here
+(`anexis/voice/hailmary/`). In App, turn on **Listen for "jarvis"**, then just
+say "Jarvis" and talk. The window comes back, it answers out loud, and you can
+talk over it to cut it off. It works with the window hidden in the tray.
+
+How it listens (`voice_attention` in anexis.toml):
+
+* **smart** (default): it answers when you say "Jarvis", and keeps listening a
+  bit after, so a follow up needs no name. Chatter in the room is ignored.
+* **wake**: only when you say "Jarvis".
+* **always**: answers everything it hears.
+
+When it wants to do something risky it asks out loud ("Sir, I would like to use
+run shell ... Shall I proceed?"). Answer **"Jarvis, go ahead"** or **"Jarvis,
+cancel"**, or click the button in the deck. A plain "yes" from a TV never counts,
+the name has to be in it.
+
+When it works on its own (autonomy), it says its heads ups out loud too.
+
+Everything runs on your PC: echo cancelling so it does not hear itself,
+Silero to hear when you talk, Smart Turn to know when you are done, Parakeet to
+write it down (on your Nvidia GPU when there is one), Piper with the JARVIS
+voice to speak. It needs the voice download: open Setup and tick Voice, that
+installs the packages and gets the models (a few GB, once). If those are missing it
+falls back to the simple "hey jarvis" voice (openWakeWord, Whisper, Piper).
+Set `voice_engine = "simple"` to always use that one.
 
 ### Change the app without rebuilding it
 

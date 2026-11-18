@@ -154,6 +154,12 @@ class Initiative:
         counts = memory.kv_get(COUNT_KEY, {})
         memory.kv_set(COUNT_KEY, {day: counts.get(day, 0) + 1})
         self.app.events.publish({"type": "initiative", "action": action, "text": text, "session_id": INBOX})
+        # With JARVIS listening, it also says it out loud.
+        speaker = getattr(self.app.wake, "say", None)
+        if speaker is not None:
+            import asyncio
+
+            asyncio.get_running_loop().create_task(speaker(text))
 
     async def check_in(self, now: datetime | None = None) -> dict:
         """Looks around once and maybe does one thing. Says what it did."""

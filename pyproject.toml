@@ -56,6 +56,11 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 120
 
+[tool.ruff.lint.per-file-ignores]
+# The owner's Hail Mary voice files, kept as written: the curly quotes and
+# dashes are on purpose (speech is matched against them).
+"anexis/voice/hailmary/{audio,listen,stt,tts,attention,conversation}.py" = ["RUF001", "SIM102", "I001", "E402"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
 # Anexis catches broad exceptions on purpose in a few places: a crashing tool or

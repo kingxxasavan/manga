@@ -130,7 +130,8 @@ async def test_the_switch_says_why_it_cannot_turn_on(live, monkeypatch):
     from anexis.voice import wake
 
     monkeypatch.setattr(wake, "can_wake", lambda: (False, "Not installed: openwakeword. Open Setup and tick Voice."))
-    _, client = await live()
+    anexis, client = await live()
+    anexis.settings.voice_engine = "simple"  # this test is about the simple engine
     async with httpx.AsyncClient(base_url=client.url) as http:
         state = (await http.get("/voice/wake")).json()
         assert state["on"] is False and state["word"] == "hey jarvis"
