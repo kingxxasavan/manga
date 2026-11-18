@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from greg.coder.claude import ClaudeRunner, parse_reset
-from greg.coder.fallback import FallbackCoder
-from greg.coder.task import make_code_tool, project_dir
-from greg.tools.base import DANGER, ToolContext
-from greg.tools.builtin import register_builtin
-from greg.tools.registry import Registry
+from anexis.coder.claude import ClaudeRunner, parse_reset
+from anexis.coder.fallback import FallbackCoder
+from anexis.coder.task import make_code_tool, project_dir
+from anexis.tools.base import DANGER, ToolContext
+from anexis.tools.builtin import register_builtin
+from anexis.tools.registry import Registry
 from tests.fakes import FakeRouter, call
 
 FAKE = str(Path(__file__).parent / "fake_claude.py")
@@ -37,7 +37,7 @@ async def test_claude_does_the_task_inside_the_project_folder(claude, settings):
     assert (settings.workspace / "hello.py").exists()
     seen = claude.calls()[0]
     assert seen["cwd"] == str(settings.workspace) and "make a hello script" in seen["argv"]
-    assert "json" in seen["argv"]
+    assert "stream-json" in seen["argv"]
 
 
 @pytest.mark.parametrize("mode", ["limit_exit1", "limit_clean", "limit_plain", "credit"])
@@ -116,14 +116,14 @@ async def test_fallback_writes_files_runs_them_and_reports(settings, memory):
     project.mkdir(parents=True)
     coder, router = fallback(
         settings, memory,
-        call("write_file", path="hello.py", content="print('hi from greg')"),
+        call("write_file", path="hello.py", content="print('hi from anexis')"),
         call("run", command="python3 hello.py"),
         "Made hello.py and ran it.",
     )
     result = await coder.run("make a hello script", project)
     assert result.ok and result.text == "Made hello.py and ran it."
-    assert (project / "hello.py").read_text() == "print('hi from greg')"
-    assert "hi from greg" in router.calls[2]["messages"][-1]["content"]  # it saw the program's output
+    assert (project / "hello.py").read_text() == "print('hi from anexis')"
+    assert "hi from anexis" in router.calls[2]["messages"][-1]["content"]  # it saw the program's output
     assert result.files == ["hello.py"]
 
 
@@ -133,11 +133,11 @@ async def test_fallback_cannot_write_outside_the_project(settings, memory):
     coder, router = fallback(
         settings, memory,
         call("write_file", path="../escape.txt", content="x"),
-        call("write_file", path="/tmp/greg_escape_test.txt", content="x"),
+        call("write_file", path="/tmp/anexis_escape_test.txt", content="x"),
         "done",
     )
     await coder.run("escape", project)
-    assert not (settings.workspace / "escape.txt").exists() and not Path("/tmp/greg_escape_test.txt").exists()
+    assert not (settings.workspace / "escape.txt").exists() and not Path("/tmp/anexis_escape_test.txt").exists()
     assert "outside the project" in router.calls[1]["messages"][-1]["content"]
 
 
@@ -187,7 +187,7 @@ async def test_code_task_asks_first_and_says_claude_wrote_it(claude, settings, m
     assert "Written by: Claude Code" in out and (settings.workspace / "hello-app" / "hello.py").exists()
 
 
-async def test_when_claude_is_out_of_usage_greg_writes_it_and_says_so(claude, settings, memory):
+async def test_when_claude_is_out_of_usage_anexis_writes_it_and_says_so(claude, settings, memory):
     claude.mode("limit_exit1")
     tool, ctx = code_tool(
         settings, memory, claude,
@@ -195,7 +195,7 @@ async def test_when_claude_is_out_of_usage_greg_writes_it_and_says_so(claude, se
         call("write_file", path="two.py", content="print(2)"), "Wrote two.py.",
     )
     out = await tool.handler({"project": "demo", "task": "make a hello script"}, ctx)
-    assert "Written by: Greg" in out and "usage" in out and "Claude Code" not in out.split("\n")[0]
+    assert "Written by: Anexis" in out and "usage" in out and "Claude Code" not in out.split("\n")[0]
     assert (settings.workspace / "demo" / "hello.py").exists()
     # While Claude rests it is not even started again.
     await tool.handler({"project": "demo", "task": "another"}, ctx)
@@ -221,3 +221,105 @@ def test_project_names_become_safe_folder_names(settings):
     assert project_dir(settings, "My Cool App!").name == "my-cool-app"
     for nasty in ("../../etc", "/etc/passwd", "..", ""):
         assert project_dir(settings, nasty).parent == settings.workspace
+
+
+# ---- the Claude plan: how it is signed in, how full it is, when to switch ----
+
+async def test_a_nearly_used_plan_moves_code_tasks_to_the_cheaper_model(claude, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "87")
+    result = await runner.run("write hello", tmp_path)
+    assert result.ok and result.model == "opus"
+    assert "87% used" in result.note and "opus" in result.note
+    argv = json.loads((tmp_path / "claude.log").read_text().splitlines()[-1])["argv"]
+    assert argv[argv.index("--model") + 1] == "opus"
+
+
+async def test_below_the_line_claude_keeps_its_usual_model(claude, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "84.9")
+    result = await runner.run("write hello", tmp_path)
+    assert result.ok and result.model == "" and result.note == ""
+    assert "--model" not in json.loads((tmp_path / "claude.log").read_text().splitlines()[-1])["argv"]
+
+
+async def test_the_line_and_the_cheaper_model_come_from_settings(claude, settings, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    settings.claude_model, settings.claude_switch_percent, settings.claude_switch_model = "fable", 50, "sonnet"
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "40")
+    assert await runner.pick_model() == ("fable", "")
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "60")
+    assert (await runner.usage(fresh=True))["percent"] == 60
+    assert (await runner.pick_model())[0] == "sonnet"
+    settings.claude_switch_percent = 0  # switched off
+    assert await runner.pick_model() == ("fable", "")
+
+
+async def test_usage_ignores_a_meter_for_one_single_model_and_is_remembered_briefly(claude, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "30")
+    reading = await runner.usage()
+    assert reading["percent"] == 30  # the 99% meter for one single model is left out
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE", "95")
+    assert (await runner.usage())["percent"] == 30       # still the remembered reading
+    assert (await runner.usage(fresh=True))["percent"] == 95
+
+
+async def test_no_usage_report_means_no_switch(claude, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.delenv("FAKE_CLAUDE_USAGE", raising=False)  # an API key, or an older Claude Code
+    assert await runner.usage() is None
+    assert await runner.pick_model() == ("", "")
+    assert (await runner.run("write hello", tmp_path)).ok
+
+
+async def test_sign_in_state_is_read_from_claude_itself(claude, settings, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    signed = await runner.auth()
+    assert signed["signed_in"] and signed["plan"] and signed["method"] == "claude.ai" and signed["subscription"] == "pro"
+    monkeypatch.setenv("FAKE_CLAUDE_AUTH", "none")
+    assert (await runner.auth())["signed_in"] is False
+    monkeypatch.setenv("FAKE_CLAUDE_AUTH", "api_key")
+    key = await runner.auth()
+    assert key["signed_in"] and key["plan"] is False
+    settings.claude_bin = "/nonexistent/claude"
+    assert (await runner.auth()) == {"installed": False, "signed_in": False, "method": "none"}
+
+
+def test_usage_is_read_from_the_plain_text_report_skipping_one_model_meters():
+    from anexis.coder.claude import usage_from_text
+
+    text = ("Current session\n  ████   23% used\n  Resets 5pm\n\nCurrent week (all models)\n  ██  41.5% used\n\n"
+            "Current week (Opus)\n  █████████  99% used\n")
+    assert usage_from_text(text) == 41.5
+    assert usage_from_text("Session: 88% used") == 88
+    assert usage_from_text("Estimated cost: $0.0000\nUsage: 0 input, 0 output") is None
+
+
+async def test_usage_comes_from_the_text_report_this_claude_version_prints(claude, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.delenv("FAKE_CLAUDE_USAGE", raising=False)
+    monkeypatch.setenv("FAKE_CLAUDE_USAGE_TEXT", "86")
+    assert (await runner.usage(fresh=True))["percent"] == 86
+    assert (await runner.pick_model())[0] == "opus"
+
+
+async def test_a_coding_run_updates_the_usage_reading_on_its_own(claude, tmp_path, monkeypatch):
+    runner = claude
+    runner.mode("ok")
+    monkeypatch.delenv("FAKE_CLAUDE_USAGE", raising=False)
+    monkeypatch.setenv("FAKE_CLAUDE_RUN_UTILIZATION", "0.9")   # 90%, said while it worked
+    result = await runner.run("write hello", tmp_path)
+    assert result.ok and result.text.startswith("Created hello.py")
+    reading = await runner.usage()
+    assert reading["percent"] == 90 and reading["source"] == "coding run"
+    assert (await runner.pick_model())[0] == "opus"
+    argv = json.loads((tmp_path / "claude.log").read_text().splitlines()[-1])["argv"]
+    assert argv[argv.index("--output-format") + 1] == "stream-json"

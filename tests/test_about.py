@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-from greg.profile.about import SECTIONS, export_profile, import_profile
+from anexis.profile.about import SECTIONS, export_profile, import_profile
 
 REPO = Path(__file__).parent.parent
 

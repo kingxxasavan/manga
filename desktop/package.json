@@ -1,0 +1,39 @@
+{
+  "name": "anexis-desktop",
+  "productName": "Anexis",
+  "version": "0.3.0",
+  "description": "Anexis as a desktop app: the window around the deck, and the Windows installer",
+  "private": true,
+  "author": "Anexis",
+  "main": "bootstrap.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/seed.test.js",
+    "dist": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "45.3.3",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "dev.anexis.desktop",
+    "productName": "Anexis",
+    "directories": { "output": "dist", "buildResources": "assets" },
+    "files": ["bootstrap.js", "frame.js", "preload.js", "seed.js", "assets/icon.png", "package.json"],
+    "extraResources": [
+      { "from": "stage/runtime", "to": "runtime" },
+      { "from": "stage/source", "to": "source" }
+    ],
+    "asar": true,
+    "win": { "icon": "assets/icon.ico" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "AnexisSetup.exe",
+      "shortcutName": "Anexis",
+      "createDesktopShortcut": true,
+      "runAfterFinish": true
+    }
+  }
+}

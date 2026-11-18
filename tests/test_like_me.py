@@ -1,17 +1,17 @@
-"""Greg has to work for how its owner really types: fast, no punctuation,
+"""Anexis has to work for how its owner really types: fast, no punctuation,
 misspelled, several asks in one breath."""
 
 import pytest
 
-from greg.coder.claude import ClaudeRunner
-from greg.coder.fallback import FallbackCoder
-from greg.coder.task import make_code_tool
-from greg.core.agent import Agent
-from greg.memory.consolidate import consolidate
-from greg.memory.style import analyze, describe, distill_style
-from greg.tools.base import Tool
-from greg.tools.builtin import register_builtin
-from greg.tools.registry import Registry
+from anexis.coder.claude import ClaudeRunner
+from anexis.coder.fallback import FallbackCoder
+from anexis.coder.task import make_code_tool
+from anexis.core.agent import Agent
+from anexis.memory.consolidate import consolidate
+from anexis.memory.style import analyze, describe, distill_style
+from anexis.tools.base import Tool
+from anexis.tools.builtin import register_builtin
+from anexis.tools.registry import Registry
 from tests.fakes import FakeRouter
 
 # Lines in the owner's real voice.

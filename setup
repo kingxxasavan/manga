@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# So that plain `bash setup` works too. The real script is setup.sh.
+exec bash "$(dirname "$0")/setup.sh" "$@"

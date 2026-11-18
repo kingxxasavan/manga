@@ -12,10 +12,15 @@ dist/
 .env
 .env.*
 !.env.example
-greg.toml
+anexis.toml
 profile/about_me.yaml
 *.db
 *.db-wal
 *.db-shm
 
 .DS_Store
+
+# desktop app build
+node_modules/
+desktop/stage/
+desktop/dist/

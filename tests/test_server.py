@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from greg.cli.client import GregClient
+from anexis.cli.client import AnexisClient
 from tests.fakes import call
 
 
@@ -22,18 +22,18 @@ async def test_chat_streams_text_then_done(live):
 
 
 async def test_health_reports_name_memory_and_tools(live):
-    greg, client = await live()
-    greg.memory.add("fact", "Likes tea")
+    anexis, client = await live()
+    anexis.memory.add("fact", "Likes tea")
     health = await client.health()
-    assert health["name"] == "Greg" and health["memories"] == 1 and health["tools"] > 10
+    assert health["name"] == "Anexis" and health["memories"] == 1 and health["tools"] > 10
 
 
 async def test_a_wrong_or_missing_token_is_rejected(live, settings):
     settings.token = "s3cret"
     _, client = await live("hi")
-    assert (await client.health())["name"] == "Greg"
+    assert (await client.health())["name"] == "Anexis"
     for bad in ("", "wrong"):
-        stranger = GregClient(client.url, bad)
+        stranger = AnexisClient(client.url, bad)
         with pytest.raises(httpx.HTTPStatusError) as e:
             await stranger.health()
         assert e.value.response.status_code == 401
@@ -71,11 +71,11 @@ async def test_memory_can_be_added_searched_explained_and_forgotten(live):
 
 
 async def test_about_me_can_be_sent_and_read_back(live):
-    greg, client = await live()
+    anexis, client = await live()
     report = await client.set_about({"name": "Sam", "classes": ["Chem 101"]})
     assert report["added"] == 2
     assert await client.about() == {"name": "Sam", "classes": ["Chem 101"]}
-    assert (greg.settings.home / "about_me.yaml").exists()
+    assert (anexis.settings.home / "about_me.yaml").exists()
 
 
 async def test_tools_endpoint_lists_built_ins(live):
@@ -92,17 +92,17 @@ async def test_doctor_reports_each_part(live):
 
 
 async def test_mode_is_remembered_between_messages(live):
-    greg, client = await live("ok", "ok")
+    anexis, client = await live("ok", "ok")
     first = (await collect(client, "hi", mode="work"))[-1]
     await collect(client, "again", session_id=first["session_id"])
-    assert greg.memory.session(first["session_id"])["mode"] == "work"
+    assert anexis.memory.session(first["session_id"])["mode"] == "work"
 
 
 async def test_one_broken_turn_does_not_take_the_server_down(live):
     _, client = await live()  # no scripted replies: the model call fails
     events = await collect(client, "hi")
     assert events[-1]["type"] == "error"
-    assert (await client.health())["name"] == "Greg"
+    assert (await client.health())["name"] == "Anexis"
 
 
 async def test_missing_voice_is_marked_optional_and_does_not_fail_the_checkup(live, settings):
@@ -110,15 +110,22 @@ async def test_missing_voice_is_marked_optional_and_does_not_fail_the_checkup(li
 
     from rich.console import Console
 
-    from greg.cli.repl import show_doctor
+    from anexis.cli.repl import show_doctor
 
     settings.piper_bin = "/nonexistent/piper"
-    greg, client = await live()
-    greg.memory.add("fact", "Name: Sam", pinned=True, source="about_me")
+    anexis, client = await live()
+    anexis.memory.add("fact", "Name: Sam", pinned=True, source="about_me")
     checks = await client.doctor()
     voice_out = next(c for c in checks if c["part"] == "voice out")
     assert not voice_out["ok"] and voice_out["optional"]
     out = io.StringIO()
     required = [c for c in checks if c["part"] in ("config", "memory", "about me", "model: fake", "voice out")]
     assert show_doctor(Console(file=out, width=200), required) is True
-    assert "piper-tts" in out.getvalue()
+    assert "setup.sh" in out.getvalue()  # the fix it names
+
+
+async def test_the_checkup_says_so_when_no_model_is_set_up(live, settings):
+    settings.providers = []
+    _, client = await live()
+    config = next(c for c in await client.doctor() if c["part"] == "config")
+    assert not config["ok"] and "model" in config["detail"].lower()

@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from greg.core.app import GregApp
-from greg.core.train import OfflineRouter, load_pack, practice_settings, run_training
+from anexis.core.app import AnexisApp
+from anexis.core.train import OfflineRouter, load_pack, practice_settings, run_training
 from tests.fakes import FakeRouter
 
 REPO = Path(__file__).parent.parent
@@ -30,37 +30,37 @@ PACK = {
 }
 
 
-def greg_for(settings, router):
+def anexis_for(settings, router):
     settings.manifest = settings.home / "none.yaml"
     settings.consolidate_minutes = 0
-    return GregApp(settings, router=router)
+    return AnexisApp(settings, router=router)
 
 
 async def test_a_practice_run_teaches_checks_and_scores_every_part(settings):
-    greg = greg_for(settings, OfflineRouter(PACK))
-    report = await run_training(greg, PACK)
+    anexis = anexis_for(settings, OfflineRouter(PACK))
+    report = await run_training(anexis, PACK)
     assert report.failures() == []
     assert report.counts() == {"learned": (3, 3), "reinforced": (1, 1), "replaced": (1, 1), "recall": (1, 1), "prompt": (1, 1), "tools": (1, 1)}
     assert report.score() == (8, 8)
 
 
-async def test_repeating_something_makes_greg_more_sure_without_a_second_copy(settings):
-    greg = greg_for(settings, OfflineRouter(PACK))
-    await run_training(greg, PACK)
-    lessons = [m for m in greg.memory.list("lesson") if "dashes" in m.text.lower()]
+async def test_repeating_something_makes_anexis_more_sure_without_a_second_copy(settings):
+    anexis = anexis_for(settings, OfflineRouter(PACK))
+    await run_training(anexis, PACK)
+    lessons = [m for m in anexis.memory.list("lesson") if "dashes" in m.text.lower()]
     assert len(lessons) == 1 and lessons[0].confidence > 0.85
 
 
 async def test_keeping_the_results_skips_the_made_up_practice_facts(settings):
-    greg = greg_for(settings, OfflineRouter(PACK))
-    report = await run_training(greg, PACK, keep=True)
-    assert [m.text for m in greg.memory.list()] == ["Never use dashes when writing to them"]
+    anexis = anexis_for(settings, OfflineRouter(PACK))
+    report = await run_training(anexis, PACK, keep=True)
+    assert [m.text for m in anexis.memory.list()] == ["Never use dashes when writing to them"]
     assert "recall" not in report.counts() and report.counts()["learned"] == (1, 1)
 
 
 async def test_a_model_that_learns_nothing_is_reported_as_misses_not_a_crash(settings):
     silent = FakeRouter(roles={"chat": ["ok"] * 10, "small": [{"ops": []}] * 10})
-    report = await run_training(greg_for(settings, silent), PACK)
+    report = await run_training(anexis_for(settings, silent), PACK)
     done, total = report.counts()["learned"]
     assert done == 0 and total == 3
     assert any("dashes" in line for line in report.failures())
@@ -70,7 +70,7 @@ async def test_alternatives_let_a_real_model_word_things_its_own_way(settings):
     pack = {"teach": [{"say": "i always want the most elite version of what we make",
                        "learns": ["elite|best|top quality"],
                        "offline": [{"op": "add", "kind": "preference", "text": "Always wants the best version"}]}]}
-    report = await run_training(greg_for(settings, OfflineRouter(pack)), pack)
+    report = await run_training(anexis_for(settings, OfflineRouter(pack)), pack)
     assert report.counts()["learned"] == (1, 1)
 
 
@@ -100,5 +100,5 @@ def test_a_pack_with_a_mistake_is_rejected_with_a_clear_reason(tmp_path):
 
 async def test_the_shipped_pack_passes_offline(settings):
     pack = load_pack(REPO / "training" / "like_me.yaml")
-    report = await run_training(greg_for(settings, OfflineRouter(pack)), pack)
+    report = await run_training(anexis_for(settings, OfflineRouter(pack)), pack)
     assert report.failures() == []

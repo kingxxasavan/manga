@@ -2,7 +2,7 @@ import time
 
 import numpy as np
 
-from greg.memory.store import DAY
+from anexis.memory.store import DAY
 
 
 def texts(results):
@@ -131,7 +131,7 @@ def test_tool_stats_count_calls_and_failures(memory):
 
 
 def test_data_survives_reopening_the_database(settings):
-    from greg.memory.store import Memory
+    from anexis.memory.store import Memory
 
     m = Memory(settings.db_path)
     m.add("fact", "Persists across restarts")
@@ -144,7 +144,7 @@ def test_data_survives_reopening_the_database(settings):
 
 
 def test_a_change_made_by_another_process_is_seen_without_a_restart(settings):
-    from greg.memory.store import Memory
+    from anexis.memory.store import Memory
 
     server, trainer = Memory(settings.db_path), Memory(settings.db_path)
     server.add("fact", "Favorite food is ramen")

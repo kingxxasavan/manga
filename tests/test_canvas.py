@@ -1,0 +1,273 @@
+import json
+from datetime import UTC, datetime, timedelta
+
+import httpx
+import pytest
+
+from anexis.tools.base import ToolContext
+from anexis.tools.builtin import canvas
+from tests.fakes import FakeRouter
+
+SOON = (datetime.now(UTC) + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:00Z")
+LATE = (datetime.now(UTC) - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:00Z")
+
+
+class School:
+    """Stands in for a school's Canvas site."""
+
+    def __init__(self):
+        self.asked = []
+        self.missing = [{"id": 501, "name": "Lab 3 writeup", "due_at": LATE, "points_possible": 20,
+                         "html_url": "https://school.test/courses/1/assignments/501", "course": {"name": "Chemistry 101"}}]
+        self.planner = [
+            {"plannable_type": "assignment", "plannable_id": 601, "context_name": "Chemistry 101", "html_url": "/courses/1/assignments/601",
+             "plannable": {"title": "Problem set 4", "due_at": SOON, "points_possible": 10}, "submissions": {"submitted": False}},
+            {"plannable_type": "assignment", "plannable_id": 602, "context_name": "History", "html_url": "/courses/2/assignments/602",
+             "plannable": {"title": "Essay draft", "due_at": SOON}, "submissions": {"submitted": True}},
+            {"plannable_type": "announcement", "plannable_id": 9, "plannable": {"title": "Welcome"}, "submissions": False},
+            {"plannable_type": "quiz", "plannable_id": 603, "context_name": "History", "html_url": "/courses/2/quizzes/603",
+             "plannable": {"title": "Quiz 2", "due_at": SOON}, "submissions": False},
+        ]
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        self.asked.append(path)
+        if request.url.host == "files.test":
+            return httpx.Response(200, content=b"slide-bytes-" + path.encode())
+        if path.startswith("/login"):
+            return httpx.Response(200, text="<html>log in</html>", headers={"content-type": "text/html"})
+        signed_in = request.headers.get("authorization") == "Bearer good-token"
+        by_cookie = "canvas_session=good-session" in request.headers.get("cookie", "") or "canvas_session=renewed" in request.headers.get("cookie", "")
+        if not (signed_in or by_cookie):
+            if request.headers.get("cookie"):  # a browser session that ran out is sent to the login page
+                return httpx.Response(302, headers={"Location": "https://school.test/login/canvas"})
+            return httpx.Response(401, json={"errors": [{"message": "Invalid access token."}]})
+        reply = self.route(request, path)
+        if by_cookie and not signed_in and reply.headers.get("content-type", "").startswith("application/json"):
+            # What Canvas does for a signed in browser: a guard in front of the JSON, and a renewed session.
+            reply = httpx.Response(reply.status_code, content=b"while(1);" + reply.content,
+                                   headers={**dict(reply.headers), "set-cookie": "canvas_session=renewed; Path=/; Domain=school.test"})
+        return reply
+
+    def route(self, request: httpx.Request, path: str) -> httpx.Response:
+        if path == "/api/v1/users/self":
+            return httpx.Response(200, json={"id": 7, "name": "Sam Student", "short_name": "Sam"})
+        if path == "/api/v1/courses":
+            if request.url.params.get("page") == "2":
+                return httpx.Response(200, json=[{"id": 2, "name": "History: 1900 to now", "course_code": "HIST200"}])
+            return httpx.Response(200, json=[{"id": 1, "name": "Chemistry 101", "course_code": "CHEM101"}],
+                                  headers={"Link": '<https://school.test/api/v1/courses?page=2>; rel="next"'})
+        if path == "/api/v1/users/self/missing_submissions":
+            return httpx.Response(200, json=self.missing)
+        if path == "/api/v1/planner/items":
+            return httpx.Response(200, json=self.planner)
+        if path == "/api/v1/courses/1/files":
+            return httpx.Response(200, json=[
+                {"id": 11, "display_name": "Week 1: Atoms?.pptx", "size": 15, "url": "https://files.test/11", "updated_at": SOON},
+                {"id": 12, "display_name": "Week 2 Bonds.pdf", "size": 15, "url": "https://files.test/12", "updated_at": SOON},
+                {"id": 13, "display_name": "Syllabus.docx", "size": 15, "url": "https://files.test/13", "updated_at": SOON},
+            ])
+        if path == "/api/v1/courses/2/files":
+            return httpx.Response(403, json={"status": "unauthorized"})
+        if path == "/api/v1/courses/2/modules":
+            return httpx.Response(200, json=[{"items": [{"type": "File", "content_id": 77}, {"type": "Page"}, {"type": "File", "content_id": 77}]}])
+        if path == "/api/v1/courses/2/files/77":
+            return httpx.Response(200, json={"id": 77, "display_name": "Lecture 5.key", "size": 15, "url": "https://files.test/77"})
+        return httpx.Response(404, json={})
+
+
+@pytest.fixture
+def school(settings, monkeypatch):
+    site = School()
+    monkeypatch.setattr(canvas, "_transport", httpx.MockTransport(site))
+    settings.env = {"CANVAS_URL": "school.test/", "CANVAS_TOKEN": "good-token"}
+    return site
+
+
+@pytest.fixture
+def ctx(settings, memory):
+    return ToolContext(settings=settings, memory=memory, router=FakeRouter(), registry=None, session_id="s")
+
+
+async def test_classes_are_listed_across_pages(school, ctx):
+    said = await canvas.canvas_courses({}, ctx)
+    assert "Chemistry 101 (id 1, CHEM101)" in said and "History: 1900 to now (id 2, HIST200)" in said
+
+
+async def test_missing_and_upcoming_work(school, ctx):
+    missing = await canvas.canvas_missing({}, ctx)
+    assert "1 missing" in missing and "Chemistry 101: Lab 3 writeup" in missing and "MISSING" in missing and "20 points" in missing
+    upcoming = await canvas.canvas_upcoming({"days": 7}, ctx)
+    assert "2 due on Canvas in the next 7 days" in upcoming
+    assert "Problem set 4" in upcoming and "Quiz 2" in upcoming
+    assert "Essay draft" not in upcoming and "Welcome" not in upcoming      # handed in, and not work at all
+    assert "https://school.test/courses/1/assignments/601" in upcoming     # a short link is made whole
+
+
+async def test_due_times_are_in_the_owners_own_time(school, ctx):
+    local = datetime.fromisoformat(SOON.replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M")
+    assert f"due {local}" in await canvas.canvas_upcoming({}, ctx)
+
+
+async def test_sync_fills_the_assignment_list_once_and_keeps_it_current(school, ctx, memory):
+    from anexis.tools.builtin.core import due_soon
+
+    client = canvas.client_for(ctx.settings, canvas._transport)
+    first = await canvas.sync(memory, client)
+    assert (first["added"], first["updated"], first["done"]) == (3, 0, 0)
+    titles = [r["title"] for r in memory.db.execute("SELECT title FROM items WHERE done=0 ORDER BY title")]
+    assert titles == ["Chemistry 101: Lab 3 writeup", "Chemistry 101: Problem set 4", "History: Quiz 2"]
+    assert any("Problem set 4" in i["title"] for i in due_soon(memory))    # shows under due soon
+    assert (await canvas.sync(memory, client))["added"] == 0             # nothing twice
+
+    school.planner[0]["plannable"]["due_at"] = (datetime.now(UTC) + timedelta(days=5)).strftime("%Y-%m-%dT%H:%M:00Z")
+    school.missing.clear()                                                 # the lab got handed in
+    third = await canvas.sync(memory, client)
+    assert (third["added"], third["updated"], third["done"]) == (0, 1, 1)
+    assert memory.db.execute("SELECT done FROM items WHERE title LIKE '%Lab 3%'").fetchone()["done"] == 1
+    await client.close()
+
+
+async def test_slides_are_listed_and_downloaded_and_not_downloaded_twice(school, ctx, settings):
+    listed = await canvas.canvas_files({"course": "chem"}, ctx)
+    assert "2 slide files in Chemistry 101" in listed and "Syllabus" not in listed
+    assert "3 files" in await canvas.canvas_files({"course": "1", "kind": "all"}, ctx)
+
+    said = await canvas.canvas_download({"course": "chemestry"}, ctx)       # a typo still finds the class
+    folder = settings.workspace / "canvas" / "Chemistry 101"
+    assert "Downloaded 2 new slides" in said and str(folder) in said
+    assert sorted(p.name for p in folder.iterdir()) == ["Week 1_ Atoms_.pptx", "Week 2 Bonds.pdf"]   # safe on Windows
+    assert (folder / "Week 2 Bonds.pdf").read_bytes() == b"slide-bytes-/12"
+    again = await canvas.canvas_download({"course": "Chemistry"}, ctx)
+    assert "Downloaded 0 new slides (2 were already there)" in again
+
+
+async def test_every_class_at_once_and_a_class_that_hides_its_files_page(school, ctx, settings):
+    said = await canvas.canvas_download({"course": "all"}, ctx)
+    assert "Downloaded 3 new slides" in said
+    assert (settings.workspace / "canvas" / "History_ 1900 to now" / "Lecture 5.key").is_file()   # found through the modules
+    assert school.asked.count("/api/v1/courses/2/files/77") == 1
+
+
+async def test_problems_are_explained(school, ctx, settings):
+    assert "no class like that" in await canvas.canvas_files({"course": "underwater basket weaving"}, ctx)
+    settings.env = {"CANVAS_URL": "school.test", "CANVAS_TOKEN": "old-token"}
+    assert "refused the token" in await canvas.canvas_missing({}, ctx)
+    settings.env = {}
+    assert (await canvas.canvas_upcoming({}, ctx)).startswith("Error: Canvas is not set up")
+
+
+async def test_the_canvas_tools_are_always_there_and_say_how_to_connect(settings, memory):
+    from anexis.tools.builtin import register_builtin
+    from anexis.tools.registry import Registry
+
+    registry = Registry()
+    register_builtin(registry, settings)
+    tool = registry.get("canvas_upcoming")
+    assert tool is not None and registry.get("canvas_download") is not None
+    ctx = ToolContext(settings=settings, memory=memory, router=FakeRouter(), registry=registry, session_id="s")
+    said = await tool.handler({}, ctx)
+    assert said.startswith("Error: Canvas is not set up") and "Sign in with my browser" in said
+
+
+def test_the_model_is_told_to_use_canvas_and_never_to_hunt_for_logins():
+    from anexis.core.agent import SYSTEM
+
+    assert "canvas_ tools" in SYSTEM and "Sign in with my browser" in SYSTEM
+    assert "never look for, read or use the owner's passwords" in SYSTEM
+
+
+def test_names_are_made_safe_for_windows():
+    assert canvas.safe_name('Week 1: "Atoms" <draft>?.pptx') == "Week 1_ _Atoms_ _draft__.pptx"
+    assert canvas.safe_name("...") == "file" and canvas.safe_name("ok.pdf") == "ok.pdf"
+
+
+def test_a_token_and_address_can_be_saved_from_setup(settings):
+    from anexis.cli.setup import KEY_OPTIONS, key_warning
+
+    by_env = {o.env: o for o in KEY_OPTIONS}
+    assert by_env["CANVAS_URL"].secret is False and by_env["CANVAS_TOKEN"].secret is True
+    assert key_warning("CANVAS_URL", "https://school.instructure.com") == ""
+    assert "https://" in key_warning("CANVAS_URL", "school.instructure.com")
+    assert json.dumps(by_env["CANVAS_TOKEN"].get_it)
+
+
+# ---- signing in with the browser instead of a token -------------------------
+
+SESSION = [{"name": "canvas_session", "value": "good-session", "domain": "school.test", "path": "/"},
+           {"name": "_csrf_token", "value": "abc", "domain": "school.test", "path": "/"}]
+
+
+def signed_in(settings, cookies=SESSION):
+    canvas.write_private(canvas.session_path(settings), {"url": "https://school.test", "user": "Sam", "cookies": cookies})
+
+
+async def test_a_browser_sign_in_works_like_a_token(school, ctx, settings, memory):
+    settings.env = {}
+    signed_in(settings)
+    assert canvas.configured(settings)
+    assert "Chemistry 101 (id 1, CHEM101)" in await canvas.canvas_courses({}, ctx)   # the while(1); guard is taken off
+    assert "Lab 3 writeup" in await canvas.canvas_missing({}, ctx)
+    said = await canvas.canvas_download({"course": "chem"}, ctx)
+    assert "Downloaded 2 new slides" in said
+
+
+async def test_a_renewed_session_is_kept_so_the_sign_in_lasts(school, ctx, settings):
+    settings.env = {}
+    signed_in(settings)
+    await canvas.canvas_courses({}, ctx)
+    kept = canvas.load_session(settings)["cookies"]
+    assert {c["name"]: c["value"] for c in kept}["canvas_session"] == "renewed"
+    assert "Chemistry" in await canvas.canvas_courses({}, ctx)                      # and the renewed one works
+
+
+async def test_a_session_that_ran_out_says_to_sign_in_again(school, ctx, settings):
+    settings.env = {}
+    signed_in(settings, [{"name": "canvas_session", "value": "expired", "domain": "school.test", "path": "/"}])
+    said = await canvas.canvas_missing({}, ctx)
+    assert "sign in ran out" in said and "Sign in with my browser" in said
+
+
+def test_a_token_wins_over_a_browser_sign_in_and_nothing_means_not_set_up(settings):
+    assert not canvas.configured(settings) and canvas.client_for(settings) is None
+    signed_in(settings)
+    assert canvas.client_for(settings).via == "session"
+    settings.env = {"CANVAS_URL": "school.test", "CANVAS_TOKEN": "t"}
+    assert canvas.client_for(settings).via == "token"
+
+
+def test_the_session_file_is_private(settings):
+    import os
+    import stat
+
+    signed_in(settings)
+    if os.name != "nt":
+        assert stat.S_IMODE(canvas.session_path(settings).stat().st_mode) == 0o600
+
+
+async def test_the_window_hands_over_a_sign_in_and_only_canvas_cookies_are_kept(live, settings, school):
+    import httpx as http_lib
+
+    from anexis.config import read_dotenv
+
+    settings.env = {}
+    _, client = await live()
+    async with http_lib.AsyncClient(base_url=client.url) as http:
+        assert (await http.get("/canvas")).json()["method"] == "none"
+        cookies = [*SESSION, {"name": "idp", "value": "secret", "domain": "login.microsoftonline.com", "path": "/"}]
+        reply = await http.post("/canvas/session", json={"url": "https://school.test/", "cookies": cookies})
+        assert reply.status_code == 200 and reply.json()["user"] == "Sam" and reply.json()["restart"]
+        state = (await http.get("/canvas")).json()
+        assert state == {"method": "session", "url": "https://school.test", "user": "Sam", "saved_at": state["saved_at"]}
+        kept = canvas.load_session(settings)["cookies"]
+        assert {c["name"] for c in kept} == {"canvas_session", "_csrf_token"}       # the school login's own cookie is dropped
+        assert read_dotenv(settings.home / ".env")["CANVAS_URL"] == "https://school.test"
+
+        bad = await http.post("/canvas/session", json={"url": "https://school.test", "cookies": [{"name": "canvas_session", "value": "nope"}]})
+        assert bad.status_code == 400 and "did not work" in bad.json()["detail"]
+        assert (await http.post("/canvas/session", json={"url": "http://school.test", "cookies": SESSION})).status_code == 400
+        assert (await http.post("/canvas/session", json={"url": "https://school.test", "cookies": []})).status_code == 400
+        assert canvas.load_session(settings)["user"] == "Sam"                      # a failed try never replaces a good one
+
+        assert (await http.delete("/canvas/session")).json()["forgotten"]
+        assert canvas.load_session(settings) is None

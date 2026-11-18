@@ -1,7 +1,7 @@
 [project]
-name = "greg"
-version = "0.1.0"
-description = "Greg: a personal AI assistant server with adaptive SQL memory, tools, code creation and voice"
+name = "anexis"
+version = "0.3.0"
+description = "Anexis: a personal AI assistant server with adaptive SQL memory, tools, code creation and voice"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
@@ -13,18 +13,30 @@ dependencies = [
     "pyyaml>=6.0",
     "rich>=13.7",
     "ddgs>=9.0",
+    "psutil>=6.0",
+    "websockets>=13",  # the terminal panel talks to the server over a socket
 ]
 
 [project.optional-dependencies]
 # Voice is optional so text chat works without the heavy speech packages.
-# Piper (text to speech) is run as its own program, see greg/voice/tts.py.
+# Piper (text to speech) is run as its own program, see anexis/voice/tts.py.
 voice = [
     "faster-whisper>=1.1",
     "sounddevice>=0.5",
 ]
+# What the desktop app adds: a real terminal on Windows and control of the
+# screen, keyboard, mouse, windows and clipboard.
+desktop = [
+    "pyautogui>=0.9.54",
+    "pyperclip>=1.9",
+    "pillow>=10",
+    "pywinpty>=2.0; sys_platform == 'win32'",
+    "pygetwindow>=0.0.9; sys_platform == 'win32'",
+]
 
 [project.scripts]
-greg = "greg.cli.main:main"
+anexis = "anexis.cli.main:main"
+jarvis = "anexis.cli.main:jarvis_main"
 
 [dependency-groups]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.6"]
@@ -34,7 +46,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["greg"]
+packages = ["anexis"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -44,9 +56,14 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 120
 
+[tool.ruff.lint.per-file-ignores]
+# The owner's Hail Mary voice files, kept as written: the curly quotes and
+# dashes are on purpose (speech is matched against them).
+"anexis/voice/hailmary/{audio,listen,stt,tts,attention,conversation}.py" = ["RUF001", "SIM102", "I001", "E402"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
-# Greg catches broad exceptions on purpose in a few places: a crashing tool or
+# Anexis catches broad exceptions on purpose in a few places: a crashing tool or
 # a model outage must never take the whole conversation down.
 ignore = [
     "E501",      # long lines are fine for tool descriptions
@@ -55,6 +72,7 @@ ignore = [
     "SIM115",
     "ASYNC109",  # tool timeouts are passed through to subprocesses on purpose
     "ASYNC110",
+    "ASYNC220",  # starting a program that must outlive the call is done with Popen on purpose
     "ASYNC230",  # small local file writes, not worth a thread
     "ASYNC240",
 ]

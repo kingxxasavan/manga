@@ -6,15 +6,15 @@ import time
 import httpx
 import pytest
 
-from greg.coder.claude import ClaudeRunner, parse_reset
-from greg.config import Provider, Settings
-from greg.core.agent import Agent
-from greg.llm.provider import ChatResult, ToolCall
-from greg.llm.router import Router
-from greg.tools.base import WRITE, Tool
-from greg.tools.builtin import register_builtin
-from greg.tools.permissions import decide
-from greg.tools.registry import Registry
+from anexis.coder.claude import ClaudeRunner, parse_reset
+from anexis.config import Provider, Settings
+from anexis.core.agent import Agent
+from anexis.llm.provider import ChatResult, ToolCall
+from anexis.llm.router import Router
+from anexis.tools.base import WRITE, Tool
+from anexis.tools.builtin import register_builtin
+from anexis.tools.permissions import decide
+from anexis.tools.registry import Registry
 from tests.fakes import FakeRouter, say
 
 
@@ -132,7 +132,7 @@ def file_tool():
     {"uri": "file://localhost/etc/passwd"},
     {"anything": "/etc/passwd"},
     {"anything": "~/.ssh/id_rsa"},
-    {"names": ["notes.txt", "/root/.greg/.env"]},
+    {"names": ["notes.txt", "/root/.anexis/.env"]},
     {"options": {"input": "/etc/shadow"}},
 ])
 def test_a_path_outside_the_workspace_is_caught_under_any_argument_name(settings, args):
