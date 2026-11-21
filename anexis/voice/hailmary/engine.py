@@ -92,6 +92,7 @@ class HailMaryEngine:
         self._task: asyncio.Task | None = None
         self._state = "off"
         self.error = ""  # why it failed to start, for the JARVIS screen
+        self._mode_before_game: str | None = None
 
     @property
     def state(self) -> str:
@@ -133,6 +134,21 @@ class HailMaryEngine:
             return
         self._state = "listening"
         self.app.events.publish({"type": "wake_listening", "engine": self.name})
+        if self.app.gaming and settings.voice_game_mode:
+            self.game(self.app.gaming)  # turned on in the middle of a game
+
+    def game(self, name: str) -> None:
+        """Game mode: while a game is in front JARVIS only answers to its name
+        (game sounds and voices cannot set it off); after, it goes back."""
+        conv = self.conversation
+        if conv is None:
+            return
+        if name and self._mode_before_game is None and conv.attention.mode != "wake":
+            self._mode_before_game = conv.attention.mode
+            conv.set_mode("wake")
+        elif not name and self._mode_before_game is not None:
+            conv.set_mode(self._mode_before_game)
+            self._mode_before_game = None
 
     def _load_speech(self, cfg: dict):
         """The voice and the ears: slow the first time, so off the main loop."""
@@ -164,8 +180,15 @@ class HailMaryEngine:
         return audio, worker
 
     async def say(self, text: str) -> None:
-        """Says something on its own, like a heads up from the check ins."""
+        """Says something on its own, like a heads up or a question from the
+        check ins. It goes into the voice conversation too, so an answer said
+        right after ("it was good") is understood as the answer to it."""
         if self.conversation is not None and self._state == "listening":
+            from anexis.voice.hailmary.brain import SESSION
+
+            memory = self.app.memory
+            memory.ensure_session(SESSION, "general")
+            memory.add_message(SESSION, "assistant", text, meta={"said_on_its_own": True})
             await self.conversation.say(text)
 
     def stop(self) -> None:

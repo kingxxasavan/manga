@@ -39,6 +39,11 @@ class AnexisApp:
         self._voice = None
         self._sync_transport = None  # tests stand in for the school server here
         self.wake = None  # the "hey Jarvis" listener, when it is on (voice/wake.py)
+        self.gaming = ""  # the full screen game in front, if any (desktop/gaming.py)
+        self.game_check = None  # how to find it; set in start() on Windows, by tests elsewhere
+        from anexis.voice.log import VoiceLog
+
+        self.voice_log = VoiceLog(settings.home / "voice.log")  # what JARVIS heard and said, and why
         self._tasks: list[asyncio.Task] = []
 
     @property
@@ -62,6 +67,7 @@ class AnexisApp:
         # Tool servers can take a while the first time (they download), so the
         # server answers right away and tools join as they come up.
         self._tasks.append(asyncio.create_task(self._start_tools()))
+        self._tasks.append(asyncio.create_task(self._log_voice()))
         if self.settings.consolidate_minutes > 0:
             self._tasks.append(asyncio.create_task(self._upkeep()))
         if self.settings.ui and self.settings.ui_dir.is_dir():
@@ -74,6 +80,11 @@ class AnexisApp:
             self._tasks.append(asyncio.create_task(self._sync_loop()))
         if self.settings.autonomy_minutes > 0:
             self._tasks.append(asyncio.create_task(self._initiative_loop()))
+        from anexis.desktop import gaming
+
+        if gaming.IS_WINDOWS and self.game_check is None:
+            self.game_check = gaming.game_in_front
+            self._tasks.append(asyncio.create_task(self._game_loop()))
         if self.settings.voice_wake:
             self.start_wake()
 
@@ -118,6 +129,30 @@ class AnexisApp:
         if self.wake:
             self.wake.stop()
             self.wake = None
+
+    async def _log_voice(self) -> None:
+        async for event in self.events.subscribe():
+            self.voice_log.write(event)
+
+    async def check_game(self) -> None:
+        """Looks once if a full screen game is in front, and switches game
+        mode on or off when that changed."""
+        name = (await asyncio.to_thread(self.game_check) if self.game_check else "") or ""
+        if name == self.gaming:
+            return
+        self.gaming = name
+        self.events.publish({"type": "game", "name": name})
+        switch = getattr(self.wake, "game", None)
+        if switch is not None and self.settings.voice_game_mode:
+            switch(name)
+
+    async def _game_loop(self) -> None:
+        while True:
+            try:
+                await self.check_game()
+            except Exception as e:  # never worth taking anything down over
+                self.memory.log("game_check_failed", {"error": f"{type(e).__name__}: {e}"[:300]})
+            await asyncio.sleep(5)
 
     async def _initiative_loop(self) -> None:
         """Anexis checking in on its own (core/initiative.py). It reads the

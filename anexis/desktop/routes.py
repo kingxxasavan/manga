@@ -191,6 +191,11 @@ def attach(app, anexis) -> None:
                 "available": ok, "why": why, "word": word, "engine": running or engine,
                 "attention": settings.voice_attention, "error": getattr(anexis.wake, "error", "") if anexis.wake else ""}
 
+    @app.get("/voice/log")
+    async def voice_log(lines: int = 80):
+        """The end of voice.log: what JARVIS heard, taken or ignored and why, and what it said."""
+        return {"lines": anexis.voice_log.tail(max(1, min(lines, 500))), "path": str(anexis.voice_log.path)}
+
     @app.post("/voice/approval")
     async def voice_approval(body: dict):
         """A spoken approval answered by click instead (Hail Mary's GUI approvals)."""

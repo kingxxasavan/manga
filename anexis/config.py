@@ -113,6 +113,9 @@ class Settings:
     fallback_rounds: int = 12
 
     voice_wake: bool = False      # listen in the background ("jarvis")
+    # With a full screen game in front, JARVIS only answers to its name and
+    # check ins wait until the game is closed (desktop/gaming.py).
+    voice_game_mode: bool = True
     # "auto": the Hail Mary JARVIS voice when it is installed, else the simple one.
     voice_engine: str = "auto"
     voice_title: str = "sir"                 # what JARVIS calls the owner

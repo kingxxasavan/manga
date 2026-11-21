@@ -6,7 +6,7 @@
 // code under anexis/, which this file only starts and stops.
 
 const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, shell, session } = require("electron");
-const { execFile, spawn } = require("node:child_process");
+const { execFileSync, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -24,6 +24,8 @@ function pythonFor(context) {
 
 function brainEnv(context) {
   const env = { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1", ANEXIS_FRAME: context.version };
+  // The brain ends itself when this app is gone, however it went (quit, crash, Task Manager).
+  env.ANEXIS_PARENT_PID = String(process.pid);
   env.PYTHONPATH = [context.live, env.PYTHONPATH].filter(Boolean).join(path.delimiter);
   if (context.runtime) {
     // Everything the installer shipped comes first on PATH, so Anexis and its
@@ -160,7 +162,10 @@ function stopBrain() {
   const pid = brain.pid;
   if (process.platform === "win32") {
     // /T takes the whole tree: the supervisor, the brain and every tool server it started.
-    execFile("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true }, () => {});
+    // It must finish before this app exits: Windows ends the supervisor along
+    // with the app, and a taskkill that starts after that finds no tree to end,
+    // which left the brain (and JARVIS) running with no window.
+    try { execFileSync("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 10000 }); } catch { /* already gone */ }
   } else {
     brain.kill("SIGINT");  // the supervisor stops the brain and exits
     setTimeout(() => { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }, 6000).unref();

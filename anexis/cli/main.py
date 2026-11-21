@@ -8,6 +8,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -98,6 +99,13 @@ def cmd_stop(settings: Settings, args) -> None:
         console.print(" No server from this setup was running.")
 
 
+def _exit_later(seconds: float) -> None:
+    """Ends this program after `seconds` if a clean stop did not get there first."""
+    timer = threading.Timer(seconds, os._exit, args=(0,))
+    timer.daemon = True  # a clean stop does not wait for it
+    timer.start()
+
+
 def cmd_serve(settings: Settings, args) -> None:
     import uvicorn
 
@@ -115,6 +123,17 @@ def cmd_serve(settings: Settings, args) -> None:
         app, host=settings.host, port=settings.port, log_level="warning", timeout_graceful_shutdown=3,
     ))
     app.state.server = server
+    from anexis.platform import parent_from_env, watch_parent
+
+    if parent := parent_from_env():
+        # Started by the supervisor: if it is ever gone without stopping this
+        # brain (Windows ends it hard when the app quits), end too, and never
+        # keep JARVIS listening with no app around.
+        def orphaned() -> None:
+            server.should_exit = True
+            _exit_later(15)  # a stuck voice thread must not keep it alive
+
+        watch_parent(parent, orphaned)
     try:
         server.run()
     finally:
@@ -126,7 +145,6 @@ def cmd_serve(settings: Settings, args) -> None:
 def cmd_desktop(settings: Settings, args) -> None:
     """Runs the brain for the desktop app or for `anexis ui`: always with a
     token, restarted when its code changes."""
-    import threading
     import webbrowser
 
     from anexis.desktop.supervisor import Supervisor
@@ -164,7 +182,18 @@ def cmd_desktop(settings: Settings, args) -> None:
     for name in ("SIGTERM", "SIGBREAK"):
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), leave)
-    sys.exit(Supervisor(settings, say).run())
+    supervisor = Supervisor(settings, say)
+    from anexis.platform import parent_from_env, watch_parent
+
+    if parent := parent_from_env():
+        # Started by the desktop app: when the app is gone (quit, crashed, ended
+        # in Task Manager) stop the brain with it, whatever way it went.
+        def app_gone() -> None:
+            supervisor.stopping = True
+            _exit_later(25)
+
+        watch_parent(parent, app_gone)
+    sys.exit(supervisor.run())
 
 
 def cmd_setup(settings: Settings, args) -> None:

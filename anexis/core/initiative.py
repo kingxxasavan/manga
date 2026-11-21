@@ -134,6 +134,8 @@ class Initiative:
             return "autonomy is off"
         if quiet(now, settings.autonomy_quiet):
             return "quiet hours"
+        if getattr(self.app, "gaming", "") and settings.voice_game_mode:
+            return "a game is in front"
         counts = self.app.memory.kv_get(COUNT_KEY, {})
         if counts.get(now.strftime("%Y-%m-%d"), 0) >= settings.autonomy_daily:
             return "enough for today"

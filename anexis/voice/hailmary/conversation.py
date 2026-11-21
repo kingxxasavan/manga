@@ -110,18 +110,18 @@ class Conversation:
 
     async def _approval_answer(self, text: str) -> None:
         if is_stop(text, self._wake_words, self._lead_ins):
-            self._heard(text, True)
+            self._heard(text, True, "stop")
             self.approvals.resolve(False, "voice")
             return self.stop()
         found, command = find_wake(text, self._wake_words, self._lead_ins)
         if not found or not command or self._is_echo(text) or is_backchannel(command):
-            return self._heard(text, False)
+            return self._heard(text, False, "no name, during a question")
         verdict = answer(command)
         if verdict is None:
-            self._heard(text, True)
+            self._heard(text, True, "a new request during a question")
             self.approvals.resolve(False, "voice")
             return await self._act(command, text)
-        self._heard(text, not self.player.busy and self._decide_approval(verdict, "voice"))
+        self._heard(text, not self.player.busy and self._decide_approval(verdict, "voice"), "answer to a question")
 
     def set_mode(self, mode: str) -> str:
         if mode not in MODES:
@@ -176,12 +176,12 @@ class Conversation:
         if not text:
             return self._settle()
         if is_stop(text, self._wake_words, self._lead_ins):
-            self._heard(text, True)
+            self._heard(text, True, "stop")
             return self.stop()
         decision = await self.attention.decide(text, self.brain.history)
         self._decide_ms = self._since_heard() - self._stt_ms
         directed = decision.directed and not (decision.reason == "always" and is_backchannel(decision.command))
-        self._heard(text, directed)
+        self._heard(text, directed, decision.reason)
         if not directed:
             self._ignored = (text, time.monotonic())
             return self._settle()
@@ -191,24 +191,24 @@ class Conversation:
         if not text:
             return self._resume()
         if is_stop(text, self._wake_words, self._lead_ins):
-            self._heard(text, True)
+            self._heard(text, True, "stop")
             return self.stop()
         found, command = find_wake(text, self._wake_words, self._lead_ins)
         if self._is_echo(text) or is_backchannel(command):
-            self._heard(text, False)
+            self._heard(text, False, "its own echo, or just yeah or ok")
             return self._resume()
         if found and not command and time.monotonic() - self._acted_at < JOIN_WINDOW_S:
-            self._heard(text, True)
+            self._heard(text, True, "the name again")
             return self._resume()
         if self.attention.mode == "wake" and not found and self._active() and not self.attention.armed():
-            self._heard(text, False)
+            self._heard(text, False, "no name (wake mode)")
             return self._resume()
         self._pause()
         if self.attention.mode == "smart":
             self.attention.mark_spoke()
         decision = await self.attention.decide(text, self.brain.history)
         directed = decision.directed and not is_backchannel(decision.command)
-        self._heard(text, directed)
+        self._heard(text, directed, decision.reason)
         if not directed:
             return self._resume()
         await self._act(decision.command, text)
@@ -256,9 +256,9 @@ class Conversation:
         ctx.bus.publish("assistant_delta", text=text)
         ctx.bus.publish("assistant_done")
 
-    def _heard(self, text: str, directed: bool) -> None:
+    def _heard(self, text: str, directed: bool, why: str = "") -> None:
         log.debug("heard %d chars (%s)", len(text), "directed" if directed else "ignored")
-        ctx.bus.publish("heard", text=text, directed=directed)
+        ctx.bus.publish("heard", text=text, directed=directed, why=why)
 
     def _is_echo(self, text: str) -> bool:
         heard = words(text)

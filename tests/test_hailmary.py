@@ -289,3 +289,92 @@ async def test_voice_levels_reach_the_deck_ten_times_a_second():
     bus.publish("state", value="listening")
     assert [e["type"] for e in got] == ["voice_levels", "voice_state"]
     assert got[0]["mic"] == 0.12346
+
+
+class ContextJudge:
+    """Says an utterance is for JARVIS only when JARVIS just asked something,
+    the way the real judge reads the recent conversation."""
+
+    async def complete(self, messages, *a, **k):
+        return "yes" if "JARVIS: How was your day" in messages[-1]["content"] else "no"
+
+
+async def test_an_answer_to_a_question_jarvis_asked_on_its_own_is_heard(settings):
+    """It asked "how was your day" by itself (a check in). The answer, said
+    without the name right after, must reach it, and it must know what it asked."""
+    import json
+    from datetime import datetime
+
+    from anexis.core.initiative import Initiative
+
+    settings.voice_attention = "smart"
+    anexis, _ = make_app(settings, json.dumps({"action": "ask", "text": "How was your day, sir?"}), "Glad to hear it, sir.")
+    mouth, speaker = Mouth(), Speaker()
+    ok, _ = anexis.start_wake(engine="hailmary", voice=mouth, stt=Ears("it was pretty good"), audio=object(),
+                              player=speaker, judge=ContextJudge())
+    assert ok and await until(lambda: anexis.wake.state == "listening")
+    settings.autonomy = "ask"
+    await Initiative(anexis).check_in(datetime(2026, 11, 18, 12, 0))
+    assert await until(lambda: mouth.said == ["How was your day, sir?"])
+    await until(lambda: anexis.wake.conversation.state == "idle")
+    await say_into(anexis)
+    assert await until(lambda: "Glad to hear it, sir." in mouth.said), mouth.said
+    said = [(m["role"], m["content"]) for m in anexis.memory.history("voice", 10)]
+    assert said[:2] == [("assistant", "How was your day, sir?"), ("user", "it was pretty good")]
+    anexis.stop_wake()
+
+
+async def test_in_a_game_jarvis_only_answers_to_its_name_and_goes_back_after(settings):
+    anexis, seen, _, _ = await started(settings, attention="smart")
+    conv = anexis.wake.conversation
+    anexis.game_check = lambda: "FortniteClient-Win64-Shipping.exe"
+    await anexis.check_game()
+    assert conv.attention.mode == "wake"
+    assert {"type": "game", "name": "FortniteClient-Win64-Shipping.exe"} in [
+        {k: e[k] for k in ("type", "name")} for e in seen if e.get("type") == "game"]
+    anexis.game_check = lambda: ""
+    await anexis.check_game()
+    assert conv.attention.mode == "smart"
+    anexis.stop_wake()
+
+
+async def test_voice_turned_on_in_the_middle_of_a_game_starts_in_game_mode(settings):
+    settings.voice_attention = "smart"
+    anexis, _ = make_app(settings)
+    anexis.game_check = lambda: "game.exe"
+    await anexis.check_game()
+    ok, _ = anexis.start_wake(engine="hailmary", voice=Mouth(), stt=Ears(), audio=object(), player=Speaker(), judge=NoJudge())
+    assert ok and await until(lambda: anexis.wake.state == "listening")
+    assert anexis.wake.conversation.attention.mode == "wake"
+    anexis.stop_wake()
+
+
+async def test_the_voice_log_says_what_it_heard_and_why(settings):
+    """So "what kept setting it off?" has an answer: every sentence heard,
+    taken or ignored and why, what it answered, what it said on its own."""
+    import json
+    from datetime import datetime
+
+    from anexis.core.initiative import Initiative
+
+    anexis, _ = make_app(settings, json.dumps({"action": "ask", "text": "How was your day, sir?"}), "It is three o'clock, sir.")
+    settings.voice_attention = "wake"
+    logging = asyncio.create_task(anexis._log_voice())
+    await asyncio.sleep(0)
+    ok, _ = anexis.start_wake(engine="hailmary", voice=Mouth(), stt=Ears("victory royale", "Jarvis, what time is it?"),
+                              audio=object(), player=Speaker(), judge=NoJudge())
+    assert ok and await until(lambda: anexis.wake.state == "listening")
+    settings.autonomy = "ask"
+    await Initiative(anexis).check_in(datetime(2026, 11, 18, 12, 0))
+    await until(lambda: anexis.wake.conversation.state == "idle")
+    anexis.wake.conversation.attention._follow_up_until = 0  # past the moment right after it spoke
+    await say_into(anexis)
+    await until(lambda: "ignored" in "".join(anexis.voice_log.tail()))
+    await say_into(anexis)
+    assert await until(lambda: "answered: It is three" in "".join(anexis.voice_log.tail()), 10)
+    text = "\n".join(anexis.voice_log.tail())
+    assert "said on its own (ask): How was your day, sir?" in text
+    assert any(line.endswith("victory royale") and "heard (ignored, no name" in line for line in text.splitlines()), text
+    assert "heard (for JARVIS, you said its name): Jarvis, what time is it?" in text
+    anexis.stop_wake()
+    logging.cancel()

@@ -88,3 +88,28 @@ def test_a_program_is_found_by_name_and_a_path_is_left_alone(tmp_path):
     tool.write_text("#!/bin/sh\n")
     tool.chmod(0o755)
     assert platform.find_program("mytool", str(tmp_path)) == str(tool)
+
+
+def test_watch_parent_says_when_the_parent_is_gone():
+    import subprocess
+    import threading
+
+    from anexis.platform import watch_parent
+
+    parent = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    gone = threading.Event()
+    watch_parent(parent.pid, gone.set, every=0.1)
+    assert not gone.wait(0.5)  # still there
+    parent.kill()
+    parent.wait()
+    assert gone.wait(5)
+
+
+def test_watch_parent_is_called_at_once_for_a_parent_already_gone():
+    import threading
+
+    from anexis.platform import watch_parent
+
+    gone = threading.Event()
+    watch_parent(2**22 + 12345, gone.set, every=0.1)  # no such process
+    assert gone.wait(2)

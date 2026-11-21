@@ -82,6 +82,8 @@ class Supervisor:
         self.settings.home.mkdir(parents=True, exist_ok=True)
         env = {
             **os.environ, "ANEXIS_SUPERVISED": "1", "PYTHONUNBUFFERED": "1",
+            # The brain ends itself if this supervisor is ever gone without stopping it.
+            "ANEXIS_PARENT_PID": str(os.getpid()),
             # The brain must come up exactly where this supervisor expects it.
             "ANEXIS_HOME": str(self.settings.home), "ANEXIS_HOST": self.settings.host,
             "ANEXIS_PORT": str(self.settings.port), "ANEXIS_WORKSPACE": str(self.settings.workspace),

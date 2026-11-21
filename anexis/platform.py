@@ -11,6 +11,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import psutil
@@ -96,6 +97,40 @@ def is_anexis_server(pid: int) -> bool:
     file can never get some other program stopped."""
     words = _words(pid) or []
     return "serve" in words and any(w in ("anexis", "anexis.exe") for w in words)
+
+
+def watch_parent(pid: int, on_gone, every: float = 2.0) -> None:
+    """Calls `on_gone()` once, from a background thread, when process `pid`
+    has ended. For a program that must not outlive whatever started it:
+    Windows never ends a program because its parent ended, so without this a
+    hard ended app leaves its brain (and JARVIS listening) running alone."""
+    import threading
+
+    try:
+        parent = psutil.Process(pid)
+    except psutil.Error:
+        parent = None
+
+    def alive() -> bool:
+        try:  # is_running() also checks the start time, so a reused pid does not count
+            return parent is not None and parent.is_running() and parent.status() != psutil.STATUS_ZOMBIE
+        except psutil.Error:
+            return False
+
+    def watch() -> None:
+        while alive():
+            time.sleep(every)
+        on_gone()
+
+    threading.Thread(target=watch, name="watch-parent", daemon=True).start()
+
+
+def parent_from_env() -> int | None:
+    """The pid in ANEXIS_PARENT_PID: the program this one must not outlive."""
+    try:
+        return int(os.environ.get("ANEXIS_PARENT_PID", "")) or None
+    except ValueError:
+        return None
 
 
 def stop_process(pid: int, grace: float = 10.0) -> None:

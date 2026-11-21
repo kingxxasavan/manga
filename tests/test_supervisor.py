@@ -185,3 +185,77 @@ def test_being_told_to_end_takes_the_brain_along(tmp_path, monkeypatch):
         assert not platform.is_running(pid)
     finally:
         proc.kill()
+
+
+def _sleeper():
+    import subprocess
+
+    return subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+
+
+def _gone(pid: int, seconds: float = 20) -> bool:
+    from anexis import platform
+
+    deadline = time.monotonic() + seconds
+    while platform.is_running(pid) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    return not platform.is_running(pid)
+
+
+def test_the_brain_ends_when_the_app_that_started_it_is_gone(tmp_path):
+    """The Windows bug: quitting the app hard-ended the supervisor, and the brain
+    under it (with JARVIS listening) kept running with no window. Here the
+    "app" is a plain process that gets killed, like Windows does."""
+    import subprocess
+
+    from anexis import platform
+
+    app = _sleeper()
+    port = free_port()
+    env = {**os.environ, "ANEXIS_HOME": str(tmp_path / "home"), "ANEXIS_WORKSPACE": str(tmp_path / "ws"),
+           "ANEXIS_PORT": str(port), "ANEXIS_OUTSIDE_TOOLS": "0", "ANEXIS_PARENT_PID": str(app.pid)}
+    sup = subprocess.Popen([sys.executable, "-m", "anexis", "desktop"], env=env, stdout=subprocess.PIPE, text=True)
+    try:
+        ready = ""
+        while not ready.startswith("ANEXIS_READY"):
+            ready = sup.stdout.readline()
+            assert ready, "the supervisor ended before the brain was up"
+        brain = int((tmp_path / "home" / "server.pid").read_text())
+        assert platform.is_running(brain)
+        app.kill()
+        app.wait()
+        sup.wait(30)
+        assert _gone(brain), "the brain kept running after the app was gone"
+    finally:
+        sup.kill()
+        app.kill()
+        pid_file = tmp_path / "home" / "server.pid"
+        if pid_file.exists():  # a failing run must not leave a brain behind
+            platform.kill_tree(int(pid_file.read_text()))
+
+
+def test_a_brain_whose_supervisor_was_killed_ends_itself(tmp_path):
+    """The supervisor ended without a chance to clean up (Windows ends it hard
+    when the app quits). The brain notices and ends too."""
+    import subprocess
+
+    supervisor = _sleeper()  # stands in for the supervisor that started the brain
+    port = free_port()
+    env = {**os.environ, "ANEXIS_HOME": str(tmp_path / "home"), "ANEXIS_WORKSPACE": str(tmp_path / "ws"),
+           "ANEXIS_PORT": str(port), "ANEXIS_OUTSIDE_TOOLS": "0", "ANEXIS_TOKEN": "tok",
+           "ANEXIS_PARENT_PID": str(supervisor.pid)}
+    brain = subprocess.Popen([sys.executable, "-m", "anexis", "serve"], env=env)
+    try:
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            try:
+                if httpx.get(f"http://127.0.0.1:{port}/health", headers={"Authorization": "Bearer tok"}, timeout=2).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                time.sleep(0.2)
+        supervisor.kill()
+        supervisor.wait()
+        brain.wait(30)
+    finally:
+        brain.kill()
+        supervisor.kill()
